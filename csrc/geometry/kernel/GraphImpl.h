@@ -63,6 +63,7 @@ void ComputeAnchorsAndWeightsEuclidean
 #else
 	core::kernel::CPULauncher launcher;
 #endif
+
 	launcher.LaunchGeneralKernel(
 			point_count,
 			[=] OPEN3D_DEVICE(int64_t workload_idx) {
