@@ -8,6 +8,7 @@
 #include <queue>
 
 #include <Eigen/Dense>
+#include <cfloat>
 
 using std::vector;
 
@@ -632,62 +633,62 @@ py::tuple compute_clusters(
 inline void compute_nearest_geodesic_nodes(
 		const py::array_t<float>& node_to_vertex_distance,
 		const py::array_t<int>& valid_nodes_mask,
-		const int vertex_id,
-		std::vector<int>& nearest_geodesic_node_ids,
-		std::vector<float>& dist_to_nearest_geodesic_nodes
+		const int vertex_index,
+		std::vector<int>& nearest_geodesic_node_indices,
+		std::vector<float>& nearest_geodesic_node_distances
 ) {
-	int num_nodes = node_to_vertex_distance.shape(0);
+	int node_count = static_cast<int>(node_to_vertex_distance.shape(0));
 
-	std::map<int, float> node_map;
+	std::map<int, float> distance_by_node_index;
 
-	for (int n = 0; n < num_nodes; ++n) {
+	for (int node_index = 0; node_index < node_count; ++node_index) {
 
 		// discard node if it was marked as invalid (due to not having enough neighbors)
-		if (*valid_nodes_mask.data(n, 0) == false) {
+		if (*valid_nodes_mask.data(node_index, 0) == false) {
 			continue;
 		}
 
-		float dist = *node_to_vertex_distance.data(n, vertex_id);
+		float distance = *node_to_vertex_distance.data(node_index, vertex_index);
 
-		if (dist >= 0) {
-			node_map.emplace(n, dist);
+		if (distance >= 0.f) {
+			distance_by_node_index.emplace(node_index, distance);
 		}
 	}
 
 	// Sort the map by distance
 	// Declaring the type of Predicate that accepts 2 pairs and return a bool
-	typedef std::function<bool(std::pair<int, float>, std::pair<int, float>)> Comparator;
+	typedef std::function<bool(std::pair<int, float>, std::pair<int, float>)> IntFloatPairComparator;
 
 	// Defining a lambda function to compare two pairs. It will compare two pairs using second field
-	Comparator comp_functor =
+	IntFloatPairComparator compare_by_float =
 			[](std::pair<int, float> node1, std::pair<int, float> node2) {
 				return node1.second < node2.second;
 			};
 
-	// Declaring a set that will store the pairs using above comparision logic
-	std::set<std::pair<int, float>, Comparator> node_set(
-			node_map.begin(), node_map.end(), comp_functor
+	// Declaring a set that will store the pairs using above comparison logic
+	std::set<std::pair<int, float>, IntFloatPairComparator> node_set(
+			distance_by_node_index.begin(), distance_by_node_index.end(), compare_by_float
 	);
 
-	for (auto n : node_set) {
-		nearest_geodesic_node_ids.push_back(n.first);
-		dist_to_nearest_geodesic_nodes.push_back(n.second);
+	for (auto node : node_set) {
+		nearest_geodesic_node_indices.push_back(node.first);
+		nearest_geodesic_node_distances.push_back(node.second);
 
-		if (nearest_geodesic_node_ids.size() == GRAPH_K) {
+		if (nearest_geodesic_node_indices.size() == GRAPH_K) {
 			break;
 		}
 	}
 }
 
-void compute_pixel_anchors_geodesic(
+void compute_pixel_anchors_shortest_path(
 		const py::array_t<float>& node_to_vertex_distance,
 		const py::array_t<int>& valid_nodes_mask,
 		const py::array_t<float>& vertices,
 		const py::array_t<int>& vertex_pixels,
 		py::array_t<int>& pixel_anchors,
 		py::array_t<float>& pixel_weights,
-		const int width, const int height,
-		const float node_coverage
+		int width, int height,
+		float node_coverage
 ) {
 	// Allocate graph node ids and corresponding skinning weights.
 	// Initialize with invalid anchors.
@@ -759,7 +760,7 @@ void compute_pixel_anchors_geodesic(
 	}
 }
 
-py::tuple compute_pixel_anchors_geodesic(
+py::tuple compute_pixel_anchors_shortest_path(
 		const py::array_t<float>& node_to_vertex_distance,
 		const py::array_t<int>& valid_nodes_mask,
 		const py::array_t<float>& vertices,
@@ -768,8 +769,8 @@ py::tuple compute_pixel_anchors_geodesic(
 		float node_coverage) {
 	py::array_t<int> pixel_anchors;
 	py::array_t<float> pixel_weights;
-	compute_pixel_anchors_geodesic(node_to_vertex_distance, valid_nodes_mask, vertices, vertex_pixels,
-	                               pixel_anchors, pixel_weights, width, height, node_coverage);
+	compute_pixel_anchors_shortest_path(node_to_vertex_distance, valid_nodes_mask, vertices, vertex_pixels,
+	                                    pixel_anchors, pixel_weights, width, height, node_coverage);
 	return py::make_tuple(pixel_anchors, pixel_weights);
 }
 
@@ -1260,6 +1261,139 @@ void update_pixel_anchors(
 				}
 			}
 		}
+	}
+}
+
+// Prints shortest paths from src to all other vertices
+void shortest_path(vector<std::pair<int, float>>* adj, int V, int src) {
+	// Create a priority queue to store vertices that
+	// are being preprocessed. This is weird syntax in C++.
+	// Refer below link for details of this syntax
+	// http://geeksquiz.com/implement-min-heap-using-stl/
+	std::priority_queue <std::pair<int, float>, vector<std::pair<int, float>>, std::greater<>> pq;
+
+	// Create a vector for distances and initialize all
+	// distances as infinite (INF)
+	std::vector<float> dist(V, FLT_MAX);
+
+	// Insert source itself in priority queue and initialize
+	// its distance as 0.
+	pq.push(std::make_pair(0, src));
+	dist[src] = 0;
+
+	/* Looping till priority queue becomes empty (or all
+	distances are not finalized) */
+	while (!pq.empty()) {
+		// The first vertex in pair is the minimum distance
+		// vertex, extract it from priority queue.
+		// vertex label is stored in second of pair (it
+		// has to be done this way to keep the vertices
+		// sorted distance (distance must be first item
+		// in pair)
+		int u = pq.top().second;
+		pq.pop();
+
+		// Get all adjacent of u.
+		for (auto x : adj[u]) {
+			// Get vertex label and weight of current adjacent
+			// of u.
+			int v = x.first;
+			int weight = x.second;
+
+			// If there is shorted path to v through u.
+			if (dist[v] > dist[u] + weight) {
+				// Updating distance of v
+				dist[v] = dist[u] + weight;
+				pq.push(std::make_pair(dist[v], v));
+			}
+		}
+	}
+}
+
+/**
+ * \brief compute point anchors based on shortest path within the graph
+ * \param vertex_to_node_distance
+ * \param vertices
+ * \param pixel_anchors
+ * \param pixel_weights
+ * \param width
+ * \param height
+ * \param node_coverage
+ */
+void compute_point_anchors_shortest_path(const py::array_t<float>& vertices,
+                                         const py::array_t<float>& nodes,
+										 const py::array_t<float>& edges,
+                                         py::array_t<int>& pixel_anchors,
+                                         py::array_t<float>& pixel_weights,
+                                         int width, int height,
+                                         float node_coverage) {
+// Allocate graph node ids and corresponding skinning weights.
+	// Initialize with invalid anchors.
+	pixel_anchors.resize({height, width, GRAPH_K}, false);
+	pixel_weights.resize({height, width, GRAPH_K}, false);
+
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++) {
+			for (int k = 0; k < GRAPH_K; k++) {
+				*pixel_anchors.mutable_data(y, x, k) = -1;
+				*pixel_weights.mutable_data(y, x, k) = 0.f;
+			}
+		}
+	}
+
+	const int vertex_count = vertices.shape(0);
+	//TODO: use Dijkstra's impl. above
+#pragma omp parallel for default(none) shared(vertices, nodes, edges, pixel_anchors, pixel_weights)\
+    firstprivate(vertex_count, node_coverage)
+	for (int vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
+		// // Get corresponding pixel location
+		// int u = *vertex_pixels.data(vertex_index, 0);
+		// int v = *vertex_pixels.data(vertex_index, 1);
+		//
+		// // Initialize some variables
+		// std::vector<int> nearest_geodesic_node_ids;
+		// std::vector<float> dist_to_nearest_geodesic_nodes;
+		// std::vector<float> skinning_weights;
+		//
+		// nearest_geodesic_node_ids.reserve(GRAPH_K);
+		// dist_to_nearest_geodesic_nodes.reserve(GRAPH_K);
+		// skinning_weights.reserve(GRAPH_K);
+		//
+		// // Find closest geodesic nodes
+		// compute_nearest_geodesic_nodes(
+		// 		node_to_vertex_distance, valid_nodes_mask, vertex_index,
+		// 		nearest_geodesic_node_ids, dist_to_nearest_geodesic_nodes
+		// );
+		//
+		// int anchor_count = nearest_geodesic_node_ids.size();
+		//
+		// // Compute skinning weights.
+		// float weight_sum{0.f};
+		// for (int i = 0; i < anchor_count; ++i) {
+		// 	float geodesic_dist_to_node = dist_to_nearest_geodesic_nodes[i];
+		//
+		// 	float weight = compute_anchor_weight(geodesic_dist_to_node, node_coverage);
+		// 	weight_sum += weight;
+		//
+		// 	skinning_weights.push_back(weight);
+		// }
+		//
+		// // Normalize the skinning weights.
+		// if (weight_sum > 0) {
+		// 	for (int anchor_index = 0; anchor_index < anchor_count; anchor_index++) {
+		// 		skinning_weights[anchor_index] /= weight_sum;
+		// 	}
+		// } else if (anchor_count > 0) {
+		// 	for (int anchor_index = 0; anchor_index < anchor_count; anchor_index++) {
+		// 		skinning_weights[anchor_index] = 1.f / static_cast<float>(anchor_count);
+		// 	}
+		// }
+		//
+		// // Store the results.
+		// for (int i = 0; i < anchor_count; i++) {
+		// 	*pixel_anchors.mutable_data(v, u, i) = nearest_geodesic_node_ids[i];
+		// 	*pixel_weights.mutable_data(v, u, i) = skinning_weights[i];
+		// }
 	}
 }
 

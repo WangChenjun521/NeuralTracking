@@ -87,11 +87,21 @@ void node_and_edge_clean_up(const py::array_t<int>& graph_edges, py::array_t<boo
 py::tuple compute_clusters(const py::array_t<int>& graph_edges_in);
 
 
+void compute_point_anchors_shortest_path(
+		const py::array_t<float>& vertices,
+		const py::array_t<float>& nodes,
+		const py::array_t<float>& edges,
+		py::array_t<int>& pixel_anchors,
+		py::array_t<float>& pixel_weights,
+		int width, int height,
+		float node_coverage
+);
+
 /**
  * For each input pixel it computes 4 nearest anchors, following graph edges.
  * It also compute skinning weights for every pixel.
  */
-void compute_pixel_anchors_geodesic(
+void compute_pixel_anchors_shortest_path(
 		const py::array_t<float>& node_to_vertex_distance,
 		const py::array_t<int>& valid_nodes_mask,
 		const py::array_t<float>& vertices,
@@ -102,7 +112,7 @@ void compute_pixel_anchors_geodesic(
 		float node_coverage
 );
 
-py::tuple compute_pixel_anchors_geodesic(
+py::tuple compute_pixel_anchors_shortest_path(
 		const py::array_t<float>& node_to_vertex_distance,
 		const py::array_t<int>& valid_nodes_mask,
 		const py::array_t<float>& vertices,

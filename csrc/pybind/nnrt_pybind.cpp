@@ -129,9 +129,9 @@ PYBIND11_MODULE(nnrt, m) {
 	      "The output is returned as an array of (node_count, max_neighbor_count), where row index represents a source node index and\n"
 	      "the row's entries, if >=0, represent destination node indices, ordered by euclidean distance between source and destination.");
 
-	m.def("compute_pixel_anchors_geodesic", py::overload_cast<const py::array_t<float>&,
+	m.def("compute_pixel_anchors_shortest_path", py::overload_cast<const py::array_t<float>&,
 			      const py::array_t<int>&, const py::array_t<float>&, const py::array_t<int>&, py::array_t<int>&, py::array_t<float>&, int, int, float>(
-			&graph_proc::compute_pixel_anchors_geodesic),
+			&graph_proc::compute_pixel_anchors_shortest_path),
 	      "node_to_vertex_distance"_a, "valid_nodes_mask"_a, "vertices"_a, "vertex_pixels"_a, "pixel_anchors"_a,
 	      "pixel_weights"_a, "width"_a, "height"_a, "node_coverage"_a,
 	      "Compute anchor ids and skinning weights for every pixel using graph connectivity.\n"
@@ -140,9 +140,9 @@ PYBIND11_MODULE(nnrt, m) {
 	      "\n The output pixel weights array of the same dimensions contains the corresponding node weights based "
 	      "\n on distance d from point to node: weight = e^( -d^(2) / (2*node_coverage^(2)) ).");
 
-	m.def("compute_pixel_anchors_geodesic", py::overload_cast<const py::array_t<float>&,
+	m.def("compute_pixel_anchors_shortest_path", py::overload_cast<const py::array_t<float>&,
 			      const py::array_t<int>&, const py::array_t<float>&, const py::array_t<int>&, int, int, float>(
-			&graph_proc::compute_pixel_anchors_geodesic),
+			&graph_proc::compute_pixel_anchors_shortest_path),
 	      "node_to_vertex_distance"_a, "valid_nodes_mask"_a, "vertices"_a, "vertex_pixels"_a,
 	      "width"_a, "height"_a, "node_coverage"_a,
 	      "Compute anchor ids and skinning weights for every pixel using graph connectivity.\n");
