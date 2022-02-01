@@ -18,8 +18,8 @@
 #include <utility>
 
 #include <open3d/t/geometry/TSDFVoxelGrid.h>
-#include <geometry/DualQuaternion.h>
-#include <geometry/AnchorComputationMethod.h>
+#include "geometry/AnchorComputationMethod.h"
+#include "geometry/GraphWarpField.h"
 
 namespace nnrt::geometry {
 
@@ -42,25 +42,10 @@ public:
 	/// All undefined SDF residuals will be kept as -2.0
 	open3d::core::Tensor ExtractValuesInExtent(int min_voxel_x, int min_voxel_y, int min_voxel_z, int max_voxel_x, int max_voxel_y, int max_voxel_z);
 
-
-
 	open3d::core::Tensor
-	IntegrateWarpedMat(const open3d::t::geometry::Image& depth, const open3d::t::geometry::Image& color, const open3d::core::Tensor& depth_normals,
-	                   const open3d::core::Tensor& intrinsics, const open3d::core::Tensor& extrinsics, const open3d::core::Tensor& warp_graph_nodes,
-	                   const open3d::core::Tensor& warp_graph_edges, const open3d::core::Tensor& node_rotations,
-	                   const open3d::core::Tensor& node_translations, float node_coverage, int anchor_count = 4, int minimum_valid_anchor_count = 3,
-	                   float depth_scale = 1000.0f, float depth_max = 3.0f,
-	                   AnchorComputationMethod compute_anchors_using = AnchorComputationMethod::EUCLIDEAN,
-	                   bool use_node_distance_thresholding = true);
-
-	open3d::core::Tensor
-	IntegrateWarpedMat(const open3d::t::geometry::Image& depth, const open3d::core::Tensor& depth_normals, const open3d::core::Tensor& intrinsics,
-	                   const open3d::core::Tensor& extrinsics, const open3d::core::Tensor& warp_graph_nodes,
-	                   const open3d::core::Tensor& warp_graph_edges, const open3d::core::Tensor& node_rotations,
-	                   const open3d::core::Tensor& node_translations, float node_coverage, int anchor_count = 4, int minimum_valid_anchor_count = 3,
-	                   float depth_scale = 1000.0f, float depth_max = 3.0f,
-	                   AnchorComputationMethod compute_anchors_using = AnchorComputationMethod::EUCLIDEAN,
-	                   bool use_node_distance_thresholding = true);
+	IntegrateWarped(const open3d::t::geometry::Image& depth, const open3d::t::geometry::Image& color, const open3d::core::Tensor& depth_normals, const open3d::core::Tensor& intrinsics,
+	                const open3d::core::Tensor& extrinsics, const GraphWarpField& warp_field,
+	                float depth_scale = 1000.0f, float depth_max = 3.0f);
 
 	int64_t ActivateSleeveBlocks();
 

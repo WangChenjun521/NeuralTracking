@@ -42,8 +42,8 @@ void pybind_geometry(py::module& m) {
 }
 
 void pybind_geometry_enums(pybind11::module& m) {
+	//Example for how to export enums to Python
 	nnrt::export_enum<nnrt::geometry::AnchorComputationMethod>(m);
-	nnrt::export_enum<nnrt::geometry::TransformationMode>(m);
 }
 
 
@@ -103,18 +103,18 @@ void pybind_geometry_extended_tsdf_voxelgrid(pybind11::module& m) {
 			"depth_min"_a = 0.1f, "depth_max"_a = 3.0f,
 			"weight_threshold"_a = 3.0f,
 			"raycast_result_mask"_a = o3tg::TSDFVoxelGrid::SurfaceMaskCode::DepthMap |
-					o3tg::TSDFVoxelGrid::SurfaceMaskCode::ColorMap);
+			                          o3tg::TSDFVoxelGrid::SurfaceMaskCode::ColorMap);
 	warpable_tsdf_voxel_grid.def(
 			"extract_surface_points", &o3tg::TSDFVoxelGrid::ExtractSurfacePoints,
 			"estimate_number"_a = -1, "weight_threshold"_a = 3.0f,
 			"surface_mask"_a = o3tg::TSDFVoxelGrid::SurfaceMaskCode::VertexMap |
-					o3tg::TSDFVoxelGrid::SurfaceMaskCode::ColorMap);
+			                   o3tg::TSDFVoxelGrid::SurfaceMaskCode::ColorMap);
 	warpable_tsdf_voxel_grid.def(
 			"extract_surface_mesh", &o3tg::TSDFVoxelGrid::ExtractSurfaceMesh,
 			"estimate_number"_a = -1, "weight_threshold"_a = 3.0f,
 			"surface_mask"_a = o3tg::TSDFVoxelGrid::SurfaceMaskCode::VertexMap |
-					o3tg::TSDFVoxelGrid::SurfaceMaskCode::ColorMap |
-					o3tg::TSDFVoxelGrid::SurfaceMaskCode::NormalMap);
+			                   o3tg::TSDFVoxelGrid::SurfaceMaskCode::ColorMap |
+			                   o3tg::TSDFVoxelGrid::SurfaceMaskCode::NormalMap);
 
 	warpable_tsdf_voxel_grid.def("to", &o3tg::TSDFVoxelGrid::To, "device"_a, "copy"_a = false);
 	warpable_tsdf_voxel_grid.def("clone", &o3tg::TSDFVoxelGrid::Clone);
@@ -149,23 +149,13 @@ void pybind_geometry_extended_tsdf_voxelgrid(pybind11::module& m) {
 	                             "min_x"_a, "min_y"_a, "min_z"_a,
 	                             "max_x"_a, "max_y"_a, "max_z"_a);
 
-	warpable_tsdf_voxel_grid.def("integrate_warped_mat", py::overload_cast<const o3tg::Image&, const o3tg::Image&, const o3c::Tensor&,
-			                             const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&,
-			                             const o3c::Tensor&, float, int, int, float, float, AnchorComputationMethod, bool>(
-			                             &WarpableTSDFVoxelGrid::IntegrateWarpedMat),
+	warpable_tsdf_voxel_grid.def("integrate_warped", py::overload_cast<
+			                             const o3tg::Image&, const o3tg::Image&, const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&,
+										 const GraphWarpField&,
+										 float, float
+	                             >(&WarpableTSDFVoxelGrid::IntegrateWarped),
 	                             "depth"_a, "color"_a, "depth_normals"_a, "intrinsics"_a, "extrinsics"_a,
-	                             "warp_graph_nodes"_a, "warp_graph_edges"_a, "node_rotations"_a, "node_translations"_a,
-	                             "node_coverage"_a, "anchor_count"_a, "minimum_valid_anchor_count"_a, "depth_scale"_a,
-	                             "depth_max"_a, "compute_anchors_using"_a = AnchorComputationMethod::EUCLIDEAN,
-	                             "use_node_distance_thresholding"_a = true);
-	warpable_tsdf_voxel_grid.def("integrate_warped_mat", py::overload_cast<const o3tg::Image&, const o3c::Tensor&,
-			                             const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&,
-			                             const o3c::Tensor&, float, int, int, float, float, AnchorComputationMethod, bool>(
-			                             &WarpableTSDFVoxelGrid::IntegrateWarpedMat),
-	                             "depth"_a, "depth_normals"_a, "intrinsics"_a, "extrinsics"_a, "warp_graph_nodes"_a,
-	                             "warp_graph_edges"_a, "node_rotations"_a, "node_translations"_a, "node_coverage"_a,
-	                             "anchor_count"_a, "minimum_valid_anchor_count"_a, "depth_scale"_a, "depth_max"_a,
-	                             "compute_anchors_using"_a = AnchorComputationMethod::EUCLIDEAN, "use_node_distance_thresholding"_a = true);
+								 "warp_field"_a, "depth_scale"_a, "depth_max"_a);
 
 	warpable_tsdf_voxel_grid.def("activate_sleeve_blocks", &WarpableTSDFVoxelGrid::ActivateSleeveBlocks);
 	// endregion
@@ -180,19 +170,19 @@ void pybind_geometry_graph_warp_field(pybind11::module& m) {
 			      const o3c::Tensor&, int, float>(&ComputeAnchorsAndWeightsShortestPath), "points"_a, "nodes"_a, "edges"_a,
 	      "anchor_count"_a, "node_coverage"_a);
 
-	m.def("warp_triangle_mesh_mat", &WarpTriangleMeshMat, "input_mesh"_a, "nodes"_a, "node_rotations"_a,
+	m.def("warp_triangle_mesh", &WarpTriangleMesh, "input_mesh"_a, "nodes"_a, "node_rotations"_a,
 	      "node_translations"_a, "anchor_count"_a, "node_coverage"_a, "threshold_nodes_by_distance"_a = false,
 	      "minimum_valid_anchor_count"_a = 0);
 
-	m.def("warp_point_cloud_mat", py::overload_cast<const open3d::t::geometry::PointCloud&, const o3c::Tensor&,
-			      const o3c::Tensor&, const o3c::Tensor&, int, float, int>(&WarpPointCloudMat),
+	m.def("warp_point_cloud", py::overload_cast<const open3d::t::geometry::PointCloud&, const o3c::Tensor&,
+			      const o3c::Tensor&, const o3c::Tensor&, int, float, int>(&WarpPointCloud),
 	      "input_point_cloud"_a, "nodes"_a, "node_rotations"_a,
 	      "node_translations"_a, "anchor_count"_a, "node_coverage"_a,
 	      "minimum_valid_anchor_count"_a);
 
-	m.def("warp_point_cloud_mat", py::overload_cast<const open3d::t::geometry::PointCloud&, const o3c::Tensor&,
+	m.def("warp_point_cloud", py::overload_cast<const open3d::t::geometry::PointCloud&, const o3c::Tensor&,
 			      const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&, const o3c::Tensor&, int>(
-			      &WarpPointCloudMat),
+			      &WarpPointCloud),
 	      "input_point_cloud"_a, "nodes"_a, "node_rotations"_a,
 	      "node_translations"_a, "anchors"_a, "anchor_weights"_a,
 	      "minimum_valid_anchor_count"_a);
@@ -206,12 +196,12 @@ void pybind_geometry_graph_warp_field(pybind11::module& m) {
 	);
 	graph_warp_field.def(py::init<o3c::Tensor&, o3c::Tensor&, o3c::Tensor&, o3c::Tensor&, float, bool, int, int>(),
 	                     "nodes"_a, "edges"_a, "edge_weights"_a, "clusters"_a,
-						 "node_coverage"_a = 0.05, "threshold_nodes_by_distance"_a = false,
-						 "anchor_count"_a = 4, "minimum_valid_anchor_count"_a = 0);
+	                     "node_coverage"_a = 0.05, "threshold_nodes_by_distance"_a = false,
+	                     "anchor_count"_a = 4, "minimum_valid_anchor_count"_a = 0);
 	graph_warp_field.def("get_warped_nodes", &GraphWarpField::GetWarpedNodes);
 	graph_warp_field.def("get_node_extent", &GraphWarpField::GetNodeExtent);
 	graph_warp_field.def("warp_mesh", &GraphWarpField::WarpMesh,
-						 "input_mesh"_a);
+	                     "input_mesh"_a, "disable_neighbor_thresholding"_a = true);
 	graph_warp_field.def_readwrite("nodes", &GraphWarpField::nodes);
 	graph_warp_field.def_readwrite("edges", &GraphWarpField::edges);
 	graph_warp_field.def_readwrite("edge_weights", &GraphWarpField::edge_weights);
