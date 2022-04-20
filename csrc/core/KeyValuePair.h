@@ -15,7 +15,7 @@
 //  ================================================================
 #pragma once
 
-namespace nnrt {
+namespace nnrtl {
 namespace core {
 
 template<typename TKey, typename TValue>

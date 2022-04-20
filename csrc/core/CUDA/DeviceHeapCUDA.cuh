@@ -17,7 +17,7 @@
 #include "core/DeviceHeap.h"
 namespace o3c = open3d::core;
 
-namespace nnrt {
+namespace nnrtl {
 namespace core {
 namespace cuda {
 template<typename T>

@@ -17,7 +17,7 @@
 
 using namespace open3d;
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace tsdf {

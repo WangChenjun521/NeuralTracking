@@ -19,7 +19,7 @@
 #include <pybind11/pybind11.h>
 namespace py = pybind11;
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 
 open3d::t::geometry::TriangleMesh WarpTriangleMeshMat(const open3d::t::geometry::TriangleMesh& input_mesh,

@@ -10,7 +10,7 @@ import open3d.core as o3c
 from dq3d import dualquat, quat
 
 # local
-import nnrt
+import nnrtl
 
 from data import camera
 from data import *
@@ -88,7 +88,7 @@ class FusionPipeline:
         #  This may involve augmenting the Open3D extension in the local C++/CUDA code.
         canonical_mesh: typing.Union[None, o3d.geometry.TriangleMesh] = None
         if self.extracted_framewise_canonical_mesh_needed:
-            canonical_mesh = self.volume.extract_surface_mesh(-1, 0).to_legacy_triangle_mesh()
+            canonical_mesh = self.volume.extract_surface_mesh(-1, 0).to_legacy()
 
         warped_mesh: typing.Union[None, o3d.geometry.TriangleMesh] = None
         # TODO: perform topological graph update
@@ -168,7 +168,7 @@ class FusionPipeline:
                 if po.pixel_anchor_computation_mode == po.AnchorComputationMode.PRECOMPUTED:
                     precomputed_anchors, precomputed_weights = sequence.get_current_pixel_anchors_and_weights()
                 if po.graph_generation_mode == po.GraphGenerationMode.FIRST_FRAME_EXTRACTED_MESH:
-                    canonical_mesh: o3d.geometry.TriangleMesh = volume.extract_surface_mesh(-1, 0).to_legacy_triangle_mesh()
+                    canonical_mesh: o3d.geometry.TriangleMesh = volume.extract_surface_mesh(-1, 0).to_legacy()
                     self.graph = build_deformation_graph_from_mesh(canonical_mesh, settings_general.node_coverage,
                                                                    erosion_iteration_count=10,
                                                                    neighbor_count=8)
@@ -235,11 +235,11 @@ class FusionPipeline:
                 target_normal_map_o3d = o3c.Tensor(target_normal_map, dtype=o3c.Dtype.Float32, device=device)
 
                 if po.pixel_anchor_computation_mode == po.AnchorComputationMode.EUCLIDEAN:
-                    pixel_anchors, pixel_weights = nnrt.compute_pixel_anchors_euclidean(
+                    pixel_anchors, pixel_weights = nnrtl.compute_pixel_anchors_euclidean(
                         self.graph.nodes, source_point_image, settings_general.node_coverage
                     )
                 elif po.pixel_anchor_computation_mode == po.AnchorComputationMode.SHORTEST_PATH:
-                    pixel_anchors, pixel_weights = nnrt.compute_pixel_anchors_shortest_path(
+                    pixel_anchors, pixel_weights = nnrtl.compute_pixel_anchors_shortest_path(
                         source_point_image, self.graph.nodes, self.graph.edges, po.anchor_node_count, settings_general.node_coverage
                     )
                 elif po.pixel_anchor_computation_mode == po.AnchorComputationMode.PRECOMPUTED:

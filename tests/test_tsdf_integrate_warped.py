@@ -7,7 +7,7 @@ import open3d.core as o3c
 import pytest
 from dq3d import quat, dualquat
 
-import nnrt
+import nnrtl
 
 from image_processing.numba_cuda.preprocessing import cuda_compute_normal
 from image_processing.numpy_cpu.preprocessing import cpu_compute_normal
@@ -49,7 +49,7 @@ def construct_test_volume1(device=o3d.core.Device('cuda:0')):
     block_resolution = 8  # 8^3 voxel blocks
     initial_block_count = 128  # initially allocated number of voxel blocks
 
-    volume = nnrt.geometry.WarpableTSDFVoxelGrid(
+    volume = nnrtl.geometry.WarpableTSDFVoxelGrid(
         {
             'tsdf': o3d.core.Dtype.Float32,
             'weight': o3d.core.Dtype.UInt16,
@@ -131,7 +131,7 @@ def test_integrate_warped_simple_motion_dq(device):
     intrinsic_matrix = construct_intrinsic_matrix1_3x3()
     fx, fy, cx, cy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1], intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
 
-    point_image = nnrt.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
+    point_image = nnrtl.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
     normals = cuda_compute_normal(point_image)
 
     # ---- compute updates ----
@@ -241,7 +241,7 @@ def test_integrate_warped_simple_motion_mat(device):
     intrinsic_matrix = construct_intrinsic_matrix1_3x3()
     fx, fy, cx, cy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1], intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
 
-    point_image = nnrt.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
+    point_image = nnrtl.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
     normals = cpu_compute_normal(point_image)
 
     # ---- compute updates ----

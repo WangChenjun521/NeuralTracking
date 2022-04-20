@@ -20,7 +20,7 @@
 #include "PlatformIndependence.h"
 
 
-namespace nnrt{
+namespace nnrtl{
 namespace core{
 
 

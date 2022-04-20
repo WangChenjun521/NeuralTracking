@@ -19,7 +19,7 @@ from data import DeformDataset
 from dq3d import quat, dualquat
 from dq3d import op
 
-import nnrt
+import nnrtl
 
 PROGRAM_EXIT_SUCCESS = 0
 
@@ -59,7 +59,7 @@ def main():
 
     # Compute vertex anchors & weights
     vertices = np.array(mesh200.vertices)
-    vertex_anchors, vertex_weights = nnrt.compute_vertex_anchors_euclidean(graph_nodes, vertices, settings_general.node_coverage)
+    vertex_anchors, vertex_weights = nnrtl.compute_vertex_anchors_euclidean(graph_nodes, vertices, settings_general.node_coverage)
 
     i_vertex = 0
     deformed_vertices = np.zeros_like(vertices)

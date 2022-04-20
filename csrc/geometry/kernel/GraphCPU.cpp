@@ -14,12 +14,12 @@
 //  limitations under the License.
 //  ================================================================
 #include "geometry/kernel/Graph.h"
-#include "open3d/core/kernel/CPULauncher.h"
+#include "open3d/core/ParallelFor.h"
 #include "core/CPU/DeviceHeapCPU.h"
 #include "geometry/kernel/GraphImpl.h"
 
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace graph {

@@ -17,10 +17,11 @@
 #include "geometry/kernel/Graph.h"
 #include "geometry/kernel/Warp.h"
 
+namespace o3c = open3d::core;
 using namespace open3d;
 using namespace open3d::t::geometry;
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 
 TriangleMesh
@@ -60,15 +61,15 @@ WarpTriangleMeshMat(const TriangleMesh& input_mesh, const core::Tensor& nodes, c
 	if (anchor_count < 1){
 		utility::LogError("anchor_count needs to be greater than one. Got: {}.", anchor_count);
 	}
-	nodes.AssertDtype(core::Dtype::Float32);
-	node_rotations.AssertDtype(core::Dtype::Float32);
-	node_translations.AssertDtype(core::Dtype::Float32);
+	o3c::AssertTensorDtype(nodes, core::Dtype::Float32);
+	open3d::core::AssertTensorDtype(node_rotations,core::Dtype::Float32);
+	open3d::core::AssertTensorDtype(node_translations,core::Dtype::Float32);
 	// endregion
 
 	TriangleMesh warped_mesh(device);
 
-	if (input_mesh.HasTriangles()) {
-		warped_mesh.SetTriangles(input_mesh.GetTriangles());
+	if (input_mesh.HasTriangleIndices()) {
+		warped_mesh.SetTriangleIndices(input_mesh.GetTriangleIndices());
 	}
 	if (input_mesh.HasVertexColors()) {
 		warped_mesh.SetVertexColors(input_mesh.GetVertexColors());
@@ -77,14 +78,14 @@ WarpTriangleMeshMat(const TriangleMesh& input_mesh, const core::Tensor& nodes, c
 		warped_mesh.SetTriangleColors(input_mesh.GetTriangleColors());
 	}
 
-	if (input_mesh.HasVertices()) {
-		const auto& vertices = input_mesh.GetVertices();
+	if (input_mesh.HasVertexPositions()) {
+		const auto& vertices = input_mesh.GetVertexPositions();
 		// FIXME: not sure if this check is at all necessary. There seem to be some situations in pythonic context when np.array(mesh.vertices)
 		//  materializes in np.float64 datatype, e.g. after generation of a box using standard API functions. This was true for Open3D 0.12.0.
-		vertices.AssertDtype(core::Dtype::Float32);
+		open3d::core::AssertTensorDtype(vertices,core::Dtype::Float32);
 		core::Tensor warped_vertices;
 		kernel::warp::WarpPoints(warped_vertices, vertices, nodes, node_rotations, node_translations, anchor_count, node_coverage);
-		warped_mesh.SetVertices(warped_vertices);
+		warped_mesh.SetVertexPositions(warped_vertices);
 	}
 
 
@@ -94,9 +95,9 @@ WarpTriangleMeshMat(const TriangleMesh& input_mesh, const core::Tensor& nodes, c
 void ComputeAnchorsAndWeightsEuclidean(core::Tensor& anchors, core::Tensor& weights, const core::Tensor& points, const core::Tensor& nodes,
                                        int anchor_count, int minimum_valid_anchor_count, float node_coverage) {
 	auto device = points.GetDevice();
-	points.AssertDtype(core::Dtype::Float32);
-	nodes.AssertDtype(core::Dtype::Float32);
-	nodes.AssertDevice(device);
+	open3d::core::AssertTensorDtype(points,core::Dtype::Float32);
+	open3d::core::AssertTensorDtype(nodes,core::Dtype::Float32);
+	open3d::core::AssertTensorDevice(nodes,device);
 	if (minimum_valid_anchor_count > anchor_count){
 		utility::LogError("minimum_valid_anchor_count (now, {}) has to be smaller than or equal to anchor_count, which is {}.",
 						  minimum_valid_anchor_count, anchor_count);
@@ -117,11 +118,11 @@ py::tuple ComputeAnchorsAndWeightsEuclidean(const core::Tensor& points, const co
 void ComputeAnchorsAndWeightsShortestPath(core::Tensor& anchors, core::Tensor& weights, const core::Tensor& points, const core::Tensor& nodes,
                                           const core::Tensor& edges, int anchor_count, float node_coverage) {
 	auto device = points.GetDevice();
-	nodes.AssertDevice(device);
-	edges.AssertDevice(device);
-	points.AssertDtype(core::Dtype::Float32);
-	nodes.AssertDtype(core::Dtype::Float32);
-	edges.AssertDtype(core::Dtype::Int32);
+	open3d::core::AssertTensorDevice(nodes,device);
+	open3d::core::AssertTensorDevice(edges,device);
+	open3d::core::AssertTensorDtype(points,core::Dtype::Float32);
+	open3d::core::AssertTensorDtype(nodes,core::Dtype::Float32);
+	open3d::core::AssertTensorDtype(edges,core::Dtype::Int32);
 	if (anchor_count < 1){
 		utility::LogError("anchor_count needs to be greater than one. Got: {}.", anchor_count);
 	}

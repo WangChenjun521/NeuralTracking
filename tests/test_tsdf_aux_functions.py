@@ -7,7 +7,7 @@ import open3d.core as o3c
 import pytest
 from dq3d import quat, dualquat, op
 
-import nnrt
+import nnrtl
 
 from tsdf_management.numba_cuda.host_functions import cuda_compute_psdf_warped_voxel_centers, cuda_compute_voxel_center_anchors, \
     cuda_update_warped_voxel_center_tsdf_and_weights
@@ -369,7 +369,7 @@ def test_update_voxel_center_values_simple_motion(device):
     intrinsic_matrix = utils.construct_intrinsic_matrix1_3x3()
     fx, fy, cx, cy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1], intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
 
-    point_image = nnrt.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
+    point_image = nnrtl.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
     normals = cuda_compute_normal(point_image)
 
     # ---- compute updates ----

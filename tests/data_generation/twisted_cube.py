@@ -152,7 +152,7 @@ def main():
         mesh = o3d.t.geometry.TriangleMesh.from_legacy_triangle_mesh(current_mesh, device=device)
 
         warped_mesh = graph_open3d.warp_mesh_mat(mesh, 0.5)
-        warped_mesh_legacy: o3d.geometry.TriangleMesh = warped_mesh.to_legacy_triangle_mesh()
+        warped_mesh_legacy: o3d.geometry.TriangleMesh = warped_mesh.to_legacy()
         warped_mesh_legacy.compute_vertex_normals()
         return warped_mesh_legacy
 

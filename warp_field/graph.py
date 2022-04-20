@@ -3,7 +3,7 @@ import typing
 import numpy as np
 import open3d as o3d
 import open3d.core as o3c
-import nnrt
+import nnrtl
 from scipy.sparse import csr_matrix, lil_matrix
 from scipy.sparse.csgraph import connected_components
 from matplotlib import cm
@@ -106,7 +106,7 @@ class DeformationGraphNumpy:
 
     def warp_mesh_mat(self, mesh: o3d.geometry.TriangleMesh, node_coverage) -> o3d.geometry.TriangleMesh:
         vertices = np.array(mesh.vertices)
-        vertex_anchors, vertex_weights = nnrt.compute_vertex_anchors_euclidean(self.nodes, vertices, node_coverage)
+        vertex_anchors, vertex_weights = nnrtl.compute_vertex_anchors_euclidean(self.nodes, vertices, node_coverage)
         i_vertex = 0
         deformed_vertices = np.zeros_like(vertices)
         for vertex in vertices:
@@ -130,7 +130,7 @@ class DeformationGraphNumpy:
         # TODO: provide an equivalent routine for o3d.t.geometry.TriangleMesh on CUDA, so that we don't have to convert
         #  to legacy mesh at all
         vertices = np.array(mesh.vertices)
-        vertex_anchors, vertex_weights = nnrt.compute_vertex_anchors_euclidean(self.nodes, vertices, node_coverage)
+        vertex_anchors, vertex_weights = nnrtl.compute_vertex_anchors_euclidean(self.nodes, vertices, node_coverage)
         i_vertex = 0
         deformed_vertices = np.zeros_like(vertices)
         for vertex in vertices:
@@ -174,7 +174,7 @@ class DeformationGraphOpen3D:
         return knn_graph_to_line_set(self.nodes.numpy(), self.edges.numpy(), self.clusters.numpy())
 
     def warp_mesh_mat(self, mesh: o3d.t.geometry.TriangleMesh, node_coverage) -> o3d.t.geometry.TriangleMesh:
-        return nnrt.geometry.warp_triangle_mesh_mat(mesh, self.nodes, self.rotations_mat, self.translations_vec, self.anchor_count, node_coverage)
+        return nnrtl.geometry.warp_triangle_mesh_mat(mesh, self.nodes, self.rotations_mat, self.translations_vec, self.anchor_count, node_coverage)
 
     def warp_mesh_dq(self, mesh: o3d.t.geometry.TriangleMesh, node_coverage) -> o3d.t.geometry.TriangleMesh:
         raise NotImplemented("Dual-quaternion mesh warping hasn't yet been implemented.")
@@ -188,20 +188,20 @@ def build_deformation_graph_from_mesh(mesh: o3d.geometry.TriangleMesh, node_cove
 
     # === Build deformation graph ===
 
-    erosion_mask = nnrt.get_vertex_erosion_mask(vertex_positions, triangle_vertex_indices, erosion_iteration_count, erosion_min_neighbor_count)
+    erosion_mask = nnrtl.get_vertex_erosion_mask(vertex_positions, triangle_vertex_indices, erosion_iteration_count, erosion_min_neighbor_count)
     nodes, node_vertex_indices = \
-        nnrt.sample_nodes(vertex_positions, erosion_mask, node_coverage, use_only_non_eroded_indices=True, random_shuffle=False)
+        nnrtl.sample_nodes(vertex_positions, erosion_mask, node_coverage, use_only_non_eroded_indices=True, random_shuffle=False)
     node_count = nodes.shape[0]
 
     graph_edges, graph_edge_weights, graph_edge_distances, node_to_vertex_distances = \
-        nnrt.compute_edges_geodesic(vertex_positions, triangle_vertex_indices, node_vertex_indices,
+        nnrtl.compute_edges_geodesic(vertex_positions, triangle_vertex_indices, node_vertex_indices,
                                     neighbor_count, node_coverage, True)
 
     # ===== Remove nodes with not enough neighbors ===
     # TODO: break up the routines in create_graph_data.py and reuse them here & in the corresponding C++ code
     # valid_nodes_mask = np.ones((node_count, 1), dtype=bool)
     # # Mark nodes with not enough neighbors
-    # nnrt.node_and_edge_clean_up(graph_edges, valid_nodes_mask)
+    # nnrtl.node_and_edge_clean_up(graph_edges, valid_nodes_mask)
     # # Get the list of invalid nodes
     # node_id_black_list = np.where(valid_nodes_mask is False)[0].tolist()
     #
@@ -279,7 +279,7 @@ def build_deformation_graph_from_mesh(mesh: o3d.geometry.TriangleMesh, node_cove
     #########################################################################
     # Compute clusters.
     #########################################################################
-    clusters_size_list, graph_clusters = nnrt.compute_clusters(graph_edges)
+    clusters_size_list, graph_clusters = nnrtl.compute_clusters(graph_edges)
     for i, cluster_size in enumerate(clusters_size_list):
         if cluster_size <= 2:
             print("Cluster is too small {}".format(clusters_size_list))

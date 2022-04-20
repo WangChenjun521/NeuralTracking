@@ -19,7 +19,7 @@
 #include "core/DeviceHeap.h"
 
 
-namespace nnrt {
+namespace nnrtl {
 namespace core {
 
 

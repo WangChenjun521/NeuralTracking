@@ -44,9 +44,9 @@ class TrackingSpanMode(Enum):
 
 # Tracking
 source_image_mode: SourceImageMode = SourceImageMode.REUSE_PREVIOUS_FRAME
-graph_generation_mode = GraphGenerationMode.FIRST_FRAME_DEPTH_IMAGE
-pixel_anchor_computation_mode = AnchorComputationMode.PRECOMPUTED
-tracking_span_mode = TrackingSpanMode.ZERO_TO_T
+graph_generation_mode = GraphGenerationMode.FIRST_FRAME_LOADED_GRAPH
+pixel_anchor_computation_mode = AnchorComputationMode.EUCLIDEAN
+tracking_span_mode = TrackingSpanMode.T_MINUS_ONE_TO_T
 
 # Integration
 anchor_node_count = 4  # used for initial graph generation, mesh warping, and integration
@@ -84,7 +84,8 @@ record_gn_point_clouds = True
 # sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_STRETCH_Y.value
 # sequence: FrameSequenceDataset = FrameSequencePreset.RED_SHORTS_40.value
 # sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_SOD_MASKS.value
-sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_50_SOD_MASKS.value
+sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_5_SOD_MASKS.value
+# sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_50_SOD_MASKS.value
 # sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_3_SOD_MASKS.value
 # sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_100_150_SOD_MASKS.value
 # sequence: FrameSequenceDataset = FrameSequencePreset.BERLIN_150_200_SOD_MASKS.value

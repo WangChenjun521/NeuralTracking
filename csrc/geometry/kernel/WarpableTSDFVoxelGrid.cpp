@@ -15,13 +15,13 @@
 //  ================================================================
 #include <open3d/core/Tensor.h>
 #include <open3d/utility/Console.h>
-#include <open3d/core/hashmap/Hashmap.h>
+#include <open3d/core/hashmap/HashMap.h>
 
 #include "geometry/kernel/WarpableTSDFVoxelGrid.h"
 
 using namespace open3d;
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace tsdf {

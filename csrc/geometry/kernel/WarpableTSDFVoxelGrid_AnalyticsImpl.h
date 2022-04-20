@@ -27,7 +27,7 @@ using namespace open3d::t::geometry::kernel;
 using namespace open3d::t::geometry::kernel::tsdf;
 
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace tsdf {
@@ -56,7 +56,7 @@ void ExtractVoxelCentersCPU
 	int64_t n_voxels = n_blocks * resolution3;
 	// each voxel center will need three coordinates: n_voxels x 3
 	voxel_centers = o3c::Tensor({n_voxels, 3}, o3c::Dtype::Float32,
-	                             block_keys.GetDevice());
+	                            block_keys.GetDevice());
 
 	// Real data indexers
 	NDArrayIndexer voxel_centers_indexer(voxel_centers, 1);
@@ -64,42 +64,36 @@ void ExtractVoxelCentersCPU
 	// Plain array that does not require indexers
 	const int64_t* indices_ptr = indices.GetDataPtr<int64_t>();
 
-#if defined(__CUDACC__)
-	namespace launcher = o3c::kernel::cuda_launcher;
-#else
-	namespace launcher = o3c::kernel::cpu_launcher;
-#endif
-
 	// Go through voxels
-	launcher::ParallelFor(
-			n_voxels,
+	open3d::core::ParallelFor(
+			indices.GetDevice(), n_voxels,
 			[=] OPEN3D_DEVICE(int64_t workload_idx) {
 
-		// Natural index (0, N) ->
-		//                        (workload_block_idx, voxel_index_in_block)
-		int64_t workload_block_idx = workload_idx / resolution3;
-		int64_t block_index = indices_ptr[workload_block_idx];
-		int64_t voxel_index_in_block = workload_idx % resolution3;
+				// Natural index (0, N) ->
+				//                        (workload_block_idx, voxel_index_in_block)
+				int64_t workload_block_idx = workload_idx / resolution3;
+				int64_t block_index = indices_ptr[workload_block_idx];
+				int64_t voxel_index_in_block = workload_idx % resolution3;
 
-		// block_index -> (x_block, y_block, z_block)
-		int* block_key_ptr =
-				block_keys_indexer.GetDataPtr<int>(block_index);
-		int64_t x_block = static_cast<int64_t>(block_key_ptr[0]);
-		int64_t y_block = static_cast<int64_t>(block_key_ptr[1]);
-		int64_t z_block = static_cast<int64_t>(block_key_ptr[2]);
+				// block_index -> (x_block, y_block, z_block)
+				int* block_key_ptr =
+						block_keys_indexer.GetDataPtr<int>(block_index);
+				int64_t x_block = static_cast<int64_t>(block_key_ptr[0]);
+				int64_t y_block = static_cast<int64_t>(block_key_ptr[1]);
+				int64_t z_block = static_cast<int64_t>(block_key_ptr[2]);
 
-		// voxel_idx -> (x_voxel, y_voxel, z_voxel)
-		int64_t x_voxel, y_voxel, z_voxel;
-		voxel_indexer.WorkloadToCoord(voxel_index_in_block,
-		                              &x_voxel, &y_voxel, &z_voxel);
+				// voxel_idx -> (x_voxel, y_voxel, z_voxel)
+				int64_t x_voxel, y_voxel, z_voxel;
+				voxel_indexer.WorkloadToCoord(voxel_index_in_block,
+				                              &x_voxel, &y_voxel, &z_voxel);
 
 
-		auto* voxel_center_pointer = voxel_centers_indexer.GetDataPtr<float>(workload_idx);
+				auto* voxel_center_pointer = voxel_centers_indexer.GetDataPtr<float>(workload_idx);
 
-		voxel_center_pointer[0] = static_cast<float>(x_block * block_resolution + x_voxel) * voxel_size;
-		voxel_center_pointer[1] = static_cast<float>(y_block * block_resolution + y_voxel) * voxel_size;
-		voxel_center_pointer[2] = static_cast<float>(z_block * block_resolution + z_voxel) * voxel_size;
-	}
+				voxel_center_pointer[0] = static_cast<float>(x_block * block_resolution + x_voxel) * voxel_size;
+				voxel_center_pointer[1] = static_cast<float>(y_block * block_resolution + y_voxel) * voxel_size;
+				voxel_center_pointer[2] = static_cast<float>(z_block * block_resolution + z_voxel) * voxel_size;
+			}
 	);
 #if defined(__CUDACC__)
 	OPEN3D_CUDA_CHECK(cudaDeviceSynchronize());
@@ -129,7 +123,7 @@ void ExtractTSDFValuesAndWeightsCPU
 	int64_t n_voxels = n_blocks * block_resolution3;
 	// each voxel output will need a TSDF value and a weight value: n_voxels x 2
 	voxel_values = o3c::Tensor::Zeros({n_voxels, 2}, o3c::Dtype::Float32,
-	                                   block_values.GetDevice());
+	                                  block_values.GetDevice());
 
 	// Real data indexers
 	NDArrayIndexer voxel_values_indexer(voxel_values, 1);
@@ -139,19 +133,14 @@ void ExtractTSDFValuesAndWeightsCPU
 	const auto* indices_ptr = indices.GetDataPtr<int64_t>();
 
 
-#if defined(__CUDACC__)
-	namespace launcher = o3c::kernel::cuda_launcher;
-#else
-	namespace launcher = o3c::kernel::cpu_launcher;
-#endif
-
 	//  Go through voxels
 //@formatter:off
 	DISPATCH_BYTESIZE_TO_VOXEL(
 			voxel_block_buffer_indexer.ElementByteSize(),
 			[&]() {
-				launcher::ParallelFor(
-						n_voxels, [=] OPEN3D_DEVICE(int64_t workload_idx) {
+				open3d::core::ParallelFor(
+						indices.GetDevice(), n_voxels,
+						[=] OPEN3D_DEVICE(int64_t workload_idx) {
 //@formatter:on
 				// Natural index (0, N) ->
 				//                        (workload_block_idx, voxel_index_in_block)
@@ -211,7 +200,7 @@ void ExtractValuesInExtentCPU(
 	int64_t n_voxels = n_blocks * block_resolution3;
 	// each voxel center will need three coordinates: n_voxels x 3
 	voxel_values = o3c::Tensor::Ones({output_range_x, output_range_y, output_range_z},
-	                                  o3c::Dtype::Float32, block_keys.GetDevice());
+	                                 o3c::Dtype::Float32, block_keys.GetDevice());
 	voxel_values *= -2.0f;
 
 	// Real data indexers
@@ -222,19 +211,14 @@ void ExtractValuesInExtentCPU(
 	// Plain array that does not require indexers
 	const auto* indices_ptr = block_indices.GetDataPtr<int64_t>();
 
-#if defined(__CUDACC__)
-	namespace launcher = o3c::kernel::cuda_launcher;
-#else
-	namespace launcher = o3c::kernel::cpu_launcher;
-#endif
-
 //  Go through voxels
 //@formatter:off
 	DISPATCH_BYTESIZE_TO_VOXEL(
 			voxel_block_buffer_indexer.ElementByteSize(),
 			[&]() {
-				launcher::ParallelFor(
-						n_voxels, [=] OPEN3D_DEVICE(int64_t workload_idx) {
+				open3d::core::ParallelFor(
+						block_indices.GetDevice(), n_voxels,
+						[=] OPEN3D_DEVICE(int64_t workload_idx) {
 //@formatter:on
 				// Natural index (0, N) ->
 				//                    (workload_block_idx, voxel_index_in_block)

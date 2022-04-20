@@ -21,7 +21,7 @@
 
 namespace o3c = open3d::core;
 
-namespace nnrt {
+namespace nnrtl {
 namespace core {
 
 

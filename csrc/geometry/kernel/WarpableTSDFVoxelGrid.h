@@ -16,10 +16,10 @@
 #pragma once
 
 #include <open3d/core/Tensor.h>
-#include <open3d/core/hashmap/Hashmap.h>
-#include <open3d/core/hashmap/HashmapBuffer.h>
+#include <open3d/core/hashmap/HashMap.h>
+#include <open3d/core/hashmap/HashBackendBuffer.h>
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace tsdf {

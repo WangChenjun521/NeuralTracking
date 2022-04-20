@@ -17,7 +17,7 @@
 #include "pybind/nnrt_pybind.h"
 
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 
 void pybind_geometry(py::module& m);

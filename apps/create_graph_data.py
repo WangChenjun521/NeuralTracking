@@ -12,15 +12,15 @@ from settings import settings_general
 from image_processing import image_processing2
 from warp_field.graph import DeformationGraphNumpy
 
-from nnrt import compute_mesh_from_depth_and_flow as compute_mesh_from_depth_and_flow_c
-from nnrt import compute_mesh_from_depth as compute_mesh_from_depth_c
-from nnrt import get_vertex_erosion_mask as erode_mesh_c
-from nnrt import sample_nodes as sample_nodes_c
-from nnrt import compute_edges_shortest_path as compute_edges_shortest_path_c
-from nnrt import node_and_edge_clean_up as node_and_edge_clean_up_c
-from nnrt import compute_pixel_anchors_shortest_path as compute_pixel_anchors_shortest_path_c
-from nnrt import compute_clusters as compute_clusters_c
-from nnrt import update_pixel_anchors as update_pixel_anchors_c
+from nnrtl import compute_mesh_from_depth_and_flow as compute_mesh_from_depth_and_flow_c
+from nnrtl import compute_mesh_from_depth as compute_mesh_from_depth_c
+from nnrtl import get_vertex_erosion_mask as erode_mesh_c
+from nnrtl import sample_nodes as sample_nodes_c
+from nnrtl import compute_edges_shortest_path as compute_edges_shortest_path_c
+from nnrtl import node_and_edge_clean_up as node_and_edge_clean_up_c
+from nnrtl import compute_pixel_anchors_shortest_path as compute_pixel_anchors_shortest_path_c
+from nnrtl import compute_clusters as compute_clusters_c
+from nnrtl import update_pixel_anchors as update_pixel_anchors_c
 
 
 def build_deformation_graph_from_depth_image(depth_image: np.ndarray, mask_image: np.ndarray, intrinsic_matrix: np.ndarray,

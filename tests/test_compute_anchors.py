@@ -1,7 +1,7 @@
 import math
 import open3d as o3d
 import open3d.core as o3c
-import nnrt
+import nnrtl
 import pytest
 import numpy as np
 
@@ -35,10 +35,10 @@ def test_compute_anchors_euclidean(device):
     distances_sorted = np.take_along_axis(distance_matrix, distance_sorted_node_indices, axis=1)
     distances_gt = distances_sorted[:, :anchor_count]
 
-    old_vertex_anchors, old_vertex_weights = nnrt.compute_vertex_anchors_euclidean(nodes, points, 0.5)
+    old_vertex_anchors, old_vertex_weights = nnrtl.compute_vertex_anchors_euclidean(nodes, points, 0.5)
     old_vertex_anchors_sorted = np.sort(old_vertex_anchors, axis=1)
     old_vertex_weights_sorted = np.sort(old_vertex_weights, axis=1)
-    vertex_anchors, vertex_weights = nnrt.geometry.compute_anchors_and_weights_euclidean(points_o3d, nodes_o3d, anchor_count, 0, 0.5)
+    vertex_anchors, vertex_weights = nnrtl.geometry.compute_anchors_and_weights_euclidean(points_o3d, nodes_o3d, anchor_count, 0, 0.5)
     vertex_anchors_sorted = np.sort(vertex_anchors.cpu().numpy(), axis=1)
     vertex_weights_sorted = np.sort(vertex_weights.cpu().numpy(), axis=1)
 
@@ -146,7 +146,7 @@ def test_shortest_path_anchors_legacy():
 
     vertices, nodes, edges, anchors_gt, weights_s0_gt, weights_s1_gt = prepare_test_data_anchor_computation_test1(node_coverage)
 
-    anchors, weights = nnrt.compute_vertex_anchors_shortest_path(vertices, nodes, edges, anchor_count, node_coverage)
+    anchors, weights = nnrtl.compute_vertex_anchors_shortest_path(vertices, nodes, edges, anchor_count, node_coverage)
 
     assert np.alltrue(anchors_gt == anchors)
     assert np.allclose(weights.sum(axis=1), [[1.0], [1.0]])
@@ -165,7 +165,7 @@ def test_shortest_path_anchors(device: o3d.core.Device):
     nodes_o3d = o3c.Tensor(nodes, device=device)
     edges_o3d = o3c.Tensor(edges, device=device)
 
-    anchors, weights = nnrt.geometry.compute_anchors_and_weights_shortest_path(
+    anchors, weights = nnrtl.geometry.compute_anchors_and_weights_shortest_path(
         vertices_o3d, nodes_o3d, edges_o3d, anchor_count, node_coverage)
 
     assert np.alltrue(anchors_gt == anchors.cpu().numpy())

@@ -106,16 +106,16 @@ set(PYBIND_SOURCE_FILES
     pybind/geometry/geometry.h
 )
 
-pybind11_add_module(nnrt
+pybind11_add_module(nnrtl
     ${PYBIND_SOURCE_FILES}
 )
 
-target_include_directories(nnrt PRIVATE
+target_include_directories(nnrtl PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 
-target_link_libraries(nnrt PUBLIC nnrt_cpp)
+target_link_libraries(nnrtl PUBLIC nnrt_cpp)
 
 include(ProcessorCount)
 set(N_PROCESSORS 1)

@@ -17,7 +17,7 @@
 
 #include <open3d/core/Tensor.h>
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace tsdf {

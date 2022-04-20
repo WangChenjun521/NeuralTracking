@@ -19,7 +19,7 @@
 #include <open3d/core/Tensor.h>
 #include <pybind11/pybind11.h>
 
-namespace nnrt{
+namespace nnrtl{
 namespace core{
 
 class IHostHeap{

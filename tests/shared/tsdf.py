@@ -1,7 +1,7 @@
 from typing import Tuple
 import open3d as o3d
 import open3d.core as o3c
-import nnrt
+import nnrtl
 import numpy as np
 
 
@@ -41,7 +41,7 @@ def construct_test_volume1(device=o3d.core.Device('cuda:0')):
     block_resolution = 8  # 8^3 voxel blocks
     initial_block_count = 128  # initially allocated number of voxel blocks
 
-    volume = nnrt.geometry.WarpableTSDFVoxelGrid(
+    volume = nnrtl.geometry.WarpableTSDFVoxelGrid(
         {
             'tsdf': o3d.core.Dtype.Float32,
             'weight': o3d.core.Dtype.UInt16,

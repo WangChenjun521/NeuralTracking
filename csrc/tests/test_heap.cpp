@@ -22,7 +22,7 @@
 
 #include "tests/test_utils/test_utils.hpp"
 
-using namespace nnrt;
+using namespace nnrtl;
 namespace o3c = open3d::core;
 
 TEST_CASE("Test Device Heap CPU") {

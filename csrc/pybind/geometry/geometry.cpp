@@ -23,8 +23,10 @@
 using namespace open3d;
 using namespace open3d::t::geometry;
 using namespace open3d::core;
+namespace o3tg = open3d::t::geometry;
+namespace o3c = open3d::core;
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 void pybind_geometry(py::module& m) {
 	py::module m_submodule = m.def_submodule(
@@ -90,12 +92,29 @@ void pybind_extended_tsdf_voxelgrid(pybind11::module& m) {
 			                   TSDFVoxelGrid::SurfaceMaskCode::ColorMap |
 			                   TSDFVoxelGrid::SurfaceMaskCode::NormalMap);
 
-	warpable_tsdf_voxel_grid.def("to", &TSDFVoxelGrid::To, "device"_a, "copy"_a = false);
-	warpable_tsdf_voxel_grid.def("clone", &TSDFVoxelGrid::Clone);
-	warpable_tsdf_voxel_grid.def("cpu", &TSDFVoxelGrid::CPU);
-	warpable_tsdf_voxel_grid.def("cuda", &TSDFVoxelGrid::CUDA, "device_id"_a);
+	warpable_tsdf_voxel_grid.def("to", &o3tg::TSDFVoxelGrid::To, "device"_a, "copy"_a = false);
+	warpable_tsdf_voxel_grid.def("clone", &o3tg::TSDFVoxelGrid::Clone);
+	warpable_tsdf_voxel_grid.def(
+			"cpu",
+			[](const WarpableTSDFVoxelGrid& tsdf_voxelgrid) {
+				return tsdf_voxelgrid.To(o3c::Device("CPU:0"));
+			},
+			"Transfer the tsdf voxelgrid to CPU. If the tsdf voxelgrid "
+			"is already on CPU, no copy will be performed.");
+	warpable_tsdf_voxel_grid.def(
+			"cuda",
+			[](const WarpableTSDFVoxelGrid& tsdf_voxelgrid, int device_id) {
+				return tsdf_voxelgrid.To(o3c::Device("CUDA", device_id));
+			},
+			"Transfer the tsdf voxelgrid to a CUDA device. If the tsdf "
+			"voxelgrid is already on the specified CUDA device, no copy will "
+			"be performed.",
+			"device_id"_a = 0);
 
-	warpable_tsdf_voxel_grid.def("get_block_hashmap", &TSDFVoxelGrid::GetBlockHashmap);
+	warpable_tsdf_voxel_grid.def("get_block_hashmap", [](const WarpableTSDFVoxelGrid& voxelgrid) {
+		// Returning shared_ptr can result in double-free.
+		return *voxelgrid.GetBlockHashMap();
+	});
 	warpable_tsdf_voxel_grid.def("get_device", &TSDFVoxelGrid::GetDevice);
 	// endregion
 	// region =============================== EXPOSE CUSTOM / NEW FUNCTIONS =======================================================

@@ -15,14 +15,15 @@ int add(int i, int j) {
 }
 
 // Definitions of all methods in the module.
-PYBIND11_MODULE(nnrt, m) {
-	nnrt::geometry::pybind_geometry(m);
+PYBIND11_MODULE(nnrtl, m) {
+	nnrtl::geometry::pybind_geometry(m);
 
 
 	m.def("compute_augmented_flow_from_rotation",
 	      &image_proc::compute_augmented_flow_from_rotation,
 	      "flow_image_rot_sa2so"_a, "flow_image_so2to"_a, "flow_image_rot_to2ta"_a, "height"_a, "width"_a,
 	      "Compute an optical flow image that reflects the augmentation applied to the source and target images.");
+
 
 	//TODO: define what the hell this is and what it's supposed to do or remove if it's garbage
 	m.def("count_tp1", &image_proc::count_tp1, "");
@@ -31,7 +32,7 @@ PYBIND11_MODULE(nnrt, m) {
 
 	//TODO: define what the hell this is and what it's supposed to do or remove if it's garbage
 	m.def("extend3", &image_proc::extend3, "");
-
+	m.def("is_legacy", [] { return true;});
 
 	//[image] --> [ordered point cloud (point image)]
 

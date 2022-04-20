@@ -16,7 +16,7 @@
 
 #include "core/CPU/HostHeapCPUImpl.h"
 
-namespace nnrt{
+namespace nnrtl{
 namespace core{
 
 template class HostHeap<open3d::core::Device::DeviceType::CPU>;

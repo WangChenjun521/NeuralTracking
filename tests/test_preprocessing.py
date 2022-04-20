@@ -2,7 +2,7 @@ import numpy as np
 import open3d as o3d
 from sklearn.preprocessing import normalize
 
-import nnrt
+import nnrtl
 import data.camera
 from data import StandaloneFrameDataset, StandaloneFramePreset
 from image_processing.numba_cuda.preprocessing import cuda_compute_normal
@@ -17,7 +17,7 @@ def test_compute_normals():
     intrinsic_matrix = np.array(intrinsics.intrinsic_matrix)
     fx, fy, cx, cy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1], intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
 
-    point_image = nnrt.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
+    point_image = nnrtl.backproject_depth_ushort(depth_image, fx, fy, cx, cy, 1000.0)
     dv = ((point_image[2:, :] - point_image[:-2, :])[:, 1:-1]).reshape(-1, 3)
     du = ((point_image[:, 2:] - point_image[:, :-2])[1:-1, :]).reshape(-1, 3)
     expected_normals = normalize(np.cross(du, dv), axis=1)

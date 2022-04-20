@@ -2,12 +2,12 @@ import numpy as np
 import math
 
 # TODO: somehow make nnrt import also take care of importing open3d, if that hasn't yet been imported
-import open3d as o3d  # necessary to import nnrt!
+import open3d as o3d  # necessary to import nnrtl!
 
-from nnrt import backproject_depth_ushort as backproject_depth_ushort_c
-from nnrt import backproject_depth_float as backproject_depth_float_c
-from nnrt import warp_flow as warp_flow_c
-from nnrt import warp_3d as warp_3d_c
+from nnrtl import backproject_depth_ushort as backproject_depth_ushort_c
+from nnrtl import backproject_depth_float as backproject_depth_float_c
+from nnrtl import warp_flow as warp_flow_c
+from nnrtl import warp_3d as warp_3d_c
 
 
 def in_bounds(point, h, w):

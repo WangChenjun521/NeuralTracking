@@ -100,13 +100,13 @@ class CMakeBuild(build_ext):
 # The information here can also be placed in setup.cfg - better separation of
 # logic and declaration, and simpler if you include description/version in a file.
 setup(
-    name="nnrt",
+    name="nnrtl",
     version="0.1.1",
-    author="Pablo Palafox, Aljaz Bozic, Gregory Kramida, Ahmed Abdelkader",
+    author="Gregory Kramida",
     author_email="",
-    description="Neural Non-Rigid Tracking & Fusion",
+    description="Neural Non-Rigid Tracking & Fusion - Legacy CPP Library",
     long_description="",
-    ext_modules=[CMakeExtension("nnrt")],
+    ext_modules=[CMakeExtension("nnrtl")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     requires=["numpy", "typing"]

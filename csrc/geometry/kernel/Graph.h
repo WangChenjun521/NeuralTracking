@@ -20,7 +20,7 @@
 #include "core/PlatformIndependence.h"
 #include "geometry/kernel/Defines.h"
 
-namespace nnrt {
+namespace nnrtl {
 namespace geometry {
 namespace kernel {
 namespace graph{

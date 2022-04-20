@@ -15,7 +15,7 @@
 //  ================================================================
 #include "DeviceHeapCUDA.cuh"
 
-namespace nnrt {
+namespace nnrtl {
 namespace core {
 
 template

@@ -15,7 +15,7 @@
 //  ================================================================
 #include "core/CUDA/HostHeapCUDAImpl.cuh"
 
-namespace nnrt{
+namespace nnrtl{
 namespace core{
 
 template class HostHeap<open3d::core::Device::DeviceType::CUDA>;
