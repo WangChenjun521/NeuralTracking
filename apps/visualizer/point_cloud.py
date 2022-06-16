@@ -1,5 +1,7 @@
-import vtk
-import vtk.util.numpy_support as vtk_np
+from pathlib import Path
+
+import vtkmodules.all as vtk
+import vtkmodules.util.numpy_support as vtk_np
 import numpy as np
 from enum import Enum
 
@@ -18,9 +20,6 @@ class PointColorMode(Enum):
 class PointCloud:
     FACTOR = 1.0
 
-    def __init__(self):
-        self.array_numpy = None
-
     def __init__(self, renderer, render_window, color):
         self.renderer = renderer
         self.render_window = render_window
@@ -35,8 +34,8 @@ class PointCloud:
         # Create mapper and actor
         self.mapper = vtk.vtkPolyDataMapper()
         self.mapper.SetInputData(self.point_poly_data)
-        self.actor = vtk.vtkActor()
 
+        self.actor = vtk.vtkActor()
         self.actor.SetMapper(self.mapper)
         self.actor.SetOrientation(0, 0.0, 180)
         self.actor.GetProperty().SetColor(color)
@@ -57,8 +56,8 @@ class PointCloud:
             raise ValueError("Unsupported color mode: " + mode.name)
         self.color_mode = mode
 
-    def update(self, path_to_npy: str, render: bool = False) -> None:
-        points_np = np.load(path_to_npy)
+    def update(self, path_to_npy: Path, render: bool = False) -> None:
+        points_np = np.load(str(path_to_npy))
         point_count = points_np.shape[0]
 
         if points_np.shape[1] > 3:

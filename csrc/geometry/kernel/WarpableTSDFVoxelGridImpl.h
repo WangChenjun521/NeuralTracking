@@ -14,6 +14,7 @@
 //  limitations under the License.
 //  ================================================================
 #include <cmath>
+#include <cfloat>
 
 #include <Eigen/Geometry>
 
@@ -28,6 +29,9 @@
 #include "geometry/kernel/WarpableTSDFVoxelGrid.h"
 #include "geometry/kernel/Defines.h"
 #include "geometry/kernel/WarpUtilities.h"
+
+#include "geometry/kernel/Segment.h"
+#include "core/PlatformIndependentAtomics.h"
 
 #ifndef __CUDACC__
 
@@ -66,6 +70,8 @@ void IntegrateWarped(const open3d::core::Tensor& block_indices, const open3d::co
 	int64_t node_count = warp_field.nodes.GetLength();
 
 	int64_t n_voxels = n_blocks * block_resolution3;
+
+
 	// cosine value for each pixel
 	cos_voxel_ray_to_normal = o3c::Tensor::Zeros(depth_tensor.GetShape(), o3c::Dtype::Float32, block_keys.GetDevice());
 
@@ -92,7 +98,7 @@ void IntegrateWarped(const open3d::core::Tensor& block_indices, const open3d::co
 	const auto* indices_ptr = block_indices.GetDataPtr<int64_t>();
 
 	auto* kd_tree_nodes = warp_field.GetIndex().GetNodes();
-	const int kd_tree_node_count = warp_field.GetIndex().GetNodeCount();
+	const int kd_tree_node_count = static_cast<int>(warp_field.GetIndex().GetNodeCount());
 
 	//  Go through voxels
 //@formatter:off
@@ -100,7 +106,7 @@ void IntegrateWarped(const open3d::core::Tensor& block_indices, const open3d::co
 			voxel_block_buffer_indexer.ElementByteSize(),
 			[&]() {
 				open3d::core::ParallelFor(
-						depth_tensor.GetDevice(),n_voxels,
+						depth_tensor.GetDevice(), n_voxels,
 						[=] OPEN3D_DEVICE (int64_t workload_idx) {
 //@formatter:on
 				// region ===================== COMPUTE VOXEL COORDINATE & CAMERA COORDINATE ================================
@@ -132,21 +138,20 @@ void IntegrateWarped(const open3d::core::Tensor& block_indices, const open3d::co
 				float x_voxel_camera, y_voxel_camera, z_voxel_camera;
 				transform_indexer.RigidTransform(voxel_global_metric.x(), voxel_global_metric.y(), voxel_global_metric.z(),
 				                                 &x_voxel_camera, &y_voxel_camera, &z_voxel_camera);
+				Eigen::Vector3f voxel_camera(x_voxel_camera, y_voxel_camera, z_voxel_camera);
 				// endregion
 				// region ===================== COMPUTE ANCHOR POINTS & WEIGHTS ================================
 				int32_t anchor_indices[MAX_ANCHOR_COUNT];
 				float anchor_weights[MAX_ANCHOR_COUNT];
 				if (!warp::FindAnchorsAndWeightsForPointEuclidean_KDTree_Threshold<TDeviceType>(
 						anchor_indices, anchor_weights, anchor_count, minimum_valid_anchor_count, kd_tree_nodes, kd_tree_node_count, node_indexer,
-						voxel_global_metric, node_coverage_squared
+						voxel_camera, node_coverage_squared
 				)) {
 					return;
 				}
 				// endregion
 				// region ===================== WARP CAMERA-SPACE VOXEL AND PROJECT TO IMAGE ============================
-				Eigen::Vector3f voxel_camera(x_voxel_camera, y_voxel_camera, z_voxel_camera);
 				Eigen::Vector3f warped_voxel(0.f, 0.f, 0.f);
-
 				warp::BlendWarp(warped_voxel, anchor_indices, anchor_weights, anchor_count, node_indexer,
 				                node_rotation_indexer, node_translation_indexer, voxel_camera);
 
@@ -213,53 +218,162 @@ void IntegrateWarped(const open3d::core::Tensor& block_indices, const open3d::co
 #endif
 }
 
+template<open3d::core::Device::DeviceType TDeviceType>
+void GetBoundingBoxesOfWarpedBlocks(open3d::core::Tensor& bounding_boxes, const open3d::core::Tensor& block_keys,
+                                    const GraphWarpField& warp_field, float voxel_size, int64_t block_resolution,
+                                    const open3d::core::Tensor& extrinsics) {
+	//TODO: optionally, filter out voxel blocks (this is an unnecessary optimization unless we need to use a great multitude of voxel blocks)
+	int64_t block_count = block_keys.GetLength();
+	o3c::Device device = block_keys.GetDevice();
+	bounding_boxes = o3c::Tensor({block_count, 6}, o3c::Float32, device);
+	NDArrayIndexer bounding_box_indexer(bounding_boxes, 1);
 
-// inline
-// NNRT_DEVICE_WHEN_CUDACC
-// void ComputeVoxelHashBlockCorners()
-
-
-template<o3c::Device::DeviceType TDeviceType>
-void DetermineWhichBlocksToActivateWithWarp(
-		o3c::Tensor& blocks_to_activate_mask, const o3c::Tensor& candidate_block_coordinates,
-		const o3c::Tensor& depth_downsampled, const o3c::Tensor& intrinsics_downsampled,
-		const o3c::Tensor& extrinsics, const o3c::Tensor& graph_nodes, const o3c::Tensor& graph_edges,
-		const o3c::Tensor& node_rotations, const o3c::Tensor& node_translations,
-		float node_coverage, int64_t block_resolution, float voxel_size, float sdf_truncation_distance
-) {
-	auto candidate_block_count = candidate_block_coordinates.GetLength();
-	blocks_to_activate_mask = o3c::Tensor({candidate_block_count}, o3c::Dtype::Bool, candidate_block_coordinates.GetDevice());
-
-	NDArrayIndexer node_indexer(graph_nodes, 1);
-	NDArrayIndexer node_rotation_indexer(node_rotations, 1);
-	NDArrayIndexer node_translation_indexer(node_translations, 1);
-	NDArrayIndexer downsampled_depth_indexer(depth_downsampled, 2);
-
-	// intermediate result storage
-	o3c::Tensor candidate_block_corners({candidate_block_count * 8, 3}, o3c::Dtype::Float32, candidate_block_coordinates.GetDevice());
-	NDArrayIndexer candidate_block_corner_indexer(candidate_block_corners, 1);
-	TransformIndexer transform_indexer(intrinsics_downsampled, extrinsics, 1.0);
-
-	open3d::utility::LogError("Sorry, function not implemented.");
-	//TODO
-// #if defined(__CUDACC__)
-// 	o3c::CUDACachedMemoryManager::ReleaseCache();
-// #endif
-// #if defined(__CUDACC__)
-// 	namespace launcher = o3c::kernel::cuda_launcher;
-// #else
-// 	namespace launcher = o3c::kernel::cpu_launcher;
-// #endif
-	//TODO
-	// launcher::ParallelFor(
-	// 		candidate_block_count,
-	// 		[=] OPEN3D_DEVICE {
-	//
-	// 		}
-	// );
+	NDArrayIndexer block_key_indexer(block_keys, 1);
+	TransformIndexer transform_indexer(o3c::Tensor::Eye(3, o3c::Float64, o3c::Device("CPU:0")), extrinsics, 1.0);
 
 
+	float block_side_length = static_cast<float>(block_resolution) * voxel_size;
+
+	auto* kd_tree_nodes = warp_field.GetIndex().GetNodes();
+	const int kd_tree_node_count = static_cast<int>(warp_field.GetIndex().GetNodeCount());
+	NDArrayIndexer node_indexer(warp_field.nodes, 1);
+	int anchor_count = warp_field.anchor_count;
+	float node_coverage_squared = warp_field.node_coverage * warp_field.node_coverage;
+	NDArrayIndexer node_rotation_indexer(warp_field.rotations, 1);
+	NDArrayIndexer node_translation_indexer(warp_field.translations, 1);
+
+	open3d::core::ParallelFor(
+			device, block_count,
+			[=] OPEN3D_DEVICE(int64_t workload_idx) {
+				auto* block_key_ptr = block_key_indexer.GetDataPtr<int32_t>(workload_idx);
+
+				auto block_x0 = static_cast<float>(block_key_ptr[0]);
+				auto block_y0 = static_cast<float>(block_key_ptr[1]);
+				auto block_z0 = static_cast<float>(block_key_ptr[2]);
+
+				//TODO: abstract away generation of coordinates in a separate function that just fills a static array of Vector3f elements
+				auto block_x1 = block_x0 + block_side_length;
+				auto block_y1 = block_y0 + block_side_length;
+				auto block_z1 = block_z0 + block_side_length;
+
+				Eigen::Vector3f block_corner_000(block_x0, block_y0, block_z0);
+				Eigen::Vector3f block_corner_001(block_x0, block_y0, block_z1);
+				Eigen::Vector3f block_corner_010(block_x0, block_y1, block_z0);
+				Eigen::Vector3f block_corner_100(block_x1, block_y0, block_z0);
+				Eigen::Vector3f block_corner_011(block_x0, block_y1, block_z1);
+				Eigen::Vector3f block_corner_101(block_x1, block_y0, block_z1);
+				Eigen::Vector3f block_corner_110(block_x1, block_y1, block_z0);
+				Eigen::Vector3f block_corner_111(block_x1, block_y1, block_z1);
+
+				Eigen::Vector3f block_corners[] = {block_corner_000, block_corner_001, block_corner_010, block_corner_100,
+				                                   block_corner_011, block_corner_101, block_corner_110, block_corner_111};
+				int32_t anchor_indices[MAX_ANCHOR_COUNT];
+				float anchor_weights[MAX_ANCHOR_COUNT];
+
+				auto* bounding_box_min_ptr = bounding_box_indexer.GetDataPtr<float>(workload_idx);
+
+				Eigen::Map<Eigen::Vector3f> box_min(bounding_box_min_ptr);
+				box_min.x() = FLT_MAX;
+				box_min.y() = FLT_MAX;
+				box_min.z() = FLT_MAX;
+
+				Eigen::Map<Eigen::Vector3f> box_max(bounding_box_min_ptr + 3);
+
+				box_max.x() = -FLT_MAX;
+				box_max.y() = -FLT_MAX;
+				box_max.z() = -FLT_MAX;
+
+
+				for (auto& corner: block_corners) {
+					Eigen::Vector3f corner_camera;
+					transform_indexer.RigidTransform(corner.x(), corner.y(), corner.z(),
+					                                 corner_camera.data(), corner_camera.data() + 1, corner_camera.data() + 2);
+					warp::FindAnchorsAndWeightsForPointEuclidean_KDTree<TDeviceType>(
+							anchor_indices, anchor_weights, anchor_count, kd_tree_nodes, kd_tree_node_count, node_indexer,
+							corner_camera, node_coverage_squared
+					);
+					Eigen::Vector3f warped_corner(0.f, 0.f, 0.f);
+					warp::BlendWarp(warped_corner, anchor_indices, anchor_weights, anchor_count, node_indexer,
+					                node_rotation_indexer, node_translation_indexer, corner_camera);
+					if (box_min.x() > warped_corner.x()) box_min.x() = warped_corner.x();
+					else if (box_max.x() < warped_corner.x()) box_max.x() = warped_corner.x();
+					if (box_min.y() > warped_corner.y()) box_min.y() = warped_corner.y();
+					else if (box_max.y() < warped_corner.y()) box_max.y() = warped_corner.y();
+					if (box_min.z() > warped_corner.z()) box_min.z() = warped_corner.z();
+					else if (box_max.z() < warped_corner.z()) box_max.z() = warped_corner.z();
+				}
+			}
+	);
 }
 
+template<open3d::core::Device::DeviceType TDeviceType>
+void GetAxisAlignedBoxesInterceptingSurfaceMask(open3d::core::Tensor& mask, const open3d::core::Tensor& boxes, const open3d::core::Tensor& intrinsics,
+                                                const open3d::core::Tensor& depth, float depth_scale, float depth_max, int32_t stride,
+                                                float truncation_distance) {
+	o3c::Device device = boxes.GetDevice();
+	int64_t box_count = boxes.GetLength();
+	mask = o3c::Tensor::Zeros({box_count}, o3c::Bool, device);
+
+	TransformIndexer transform_indexer(intrinsics, o3c::Tensor::Eye(4, o3c::Float64, o3c::Device("CPU:0")), 1.0);
+
+	NDArrayIndexer mask_indexer(mask, 1);
+	NDArrayIndexer box_indexer(boxes, 1);
+	NDArrayIndexer depth_indexer(depth, 2);
+
+	auto rows_strided = depth_indexer.GetShape(0) / stride;
+	auto cols_strided = depth_indexer.GetShape(1) / stride;
+	int64_t sampled_pixel_count = rows_strided * cols_strided;
+
+	o3c::Blob segments(static_cast<int64_t>(sizeof(Segment)) * sampled_pixel_count, device);
+	auto* segment_data = reinterpret_cast<Segment*>(segments.GetDataPtr());
+	int64_t segment_count;
+	//@formatter:off
+	DISPATCH_DTYPE_TO_TEMPLATE(
+			depth.GetDtype(),
+			[&]() {
+				NNRT_DECLARE_ATOMIC(uint32_t , segment_count_atomic);
+				NNRT_INITIALIZE_ATOMIC(uint32_t, segment_count_atomic, 0);
+
+				o3c::ParallelFor( device, sampled_pixel_count,
+								  NNRT_LAMBDA_CAPTURE_CLAUSE NNRT_DEVICE_WHEN_CUDACC(int64_t workload_idx) {
+				int v = (workload_idx / cols_strided) * stride;
+				int u = (workload_idx % cols_strided) * stride;
+				float depth = *depth_indexer.GetDataPtr<scalar_t>(u, v) / depth_scale;
+				if (depth > 0 && depth < depth_max) {
+					Eigen::Vector3f segment_start, segment_end;
+					float segment_start_depth = depth - truncation_distance;
+					float segment_end_depth = depth + truncation_distance;
+					transform_indexer.Unproject(u, v, segment_start_depth, segment_start.data(), segment_start.data() + 1,
+					                            segment_start.data() + 2);
+					transform_indexer.Unproject(u, v, segment_end_depth, segment_end.data(), segment_end.data() + 1,
+					                            segment_end.data() + 2);
+					uint32_t segment_index = NNRT_ATOMIC_ADD(segment_count_atomic, (uint32_t)1);
+					segment_data[segment_index] = Segment(segment_start, segment_end);
+				}
+
+			});
+			segment_count = NNRT_GET_ATOMIC_VALUE_CPU(segment_count_atomic);
+			NNRT_CLEAN_UP_ATOMIC(segment_count_atomic);
+	});
+	//@formatter:on
+
+	int64_t intersection_check_count = segment_count * box_count;
+
+	o3c::ParallelFor(
+			device, intersection_check_count,
+			[=] OPEN3D_DEVICE(int64_t workload_idx) {
+				int64_t i_segment = workload_idx % segment_count;
+				int64_t i_box = workload_idx / segment_count;
+				auto box_data = box_indexer.template GetDataPtr<float>(i_box);
+				Eigen::Map<Eigen::Vector3f> box_min(box_data);
+				Eigen::Map<Eigen::Vector3f> box_max(box_data + 3);
+
+				if (segment_data[i_segment].IntersectsAxisAlignedBox(box_min, box_max)) {
+					*mask_indexer.GetDataPtr<bool>(i_box) = true;
+				}
+			}
+
+	);
+}
 
 } // namespace nnrt::geometry::kernel::tsdf

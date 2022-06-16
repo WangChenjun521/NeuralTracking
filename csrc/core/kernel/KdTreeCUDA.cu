@@ -19,8 +19,6 @@
 #include "core/kernel/BuildKdTreeImpl.h"
 #include "core/kernel/SearchKdTreeImpl.h"
 
-
-
 namespace nnrt::core::kernel::kdtree {
 
 template
@@ -31,12 +29,13 @@ template
 void FindKNearestKdTreePoints<open3d::core::Device::DeviceType::CUDA, NeighborTrackingStrategy::PLAIN>(
 		open3d::core::Blob& index_data, int index_length, open3d::core::Tensor& nearest_neighbor_indices,
 		open3d::core::Tensor& nearest_neighbor_distances, const open3d::core::Tensor& query_points, int32_t k,
-		const open3d::core::Tensor& kd_tree_points);
+		const open3d::core::Tensor& reference_points);
 
 template
 void FindKNearestKdTreePoints<open3d::core::Device::DeviceType::CUDA, NeighborTrackingStrategy::PRIORITY_QUEUE>(
 		open3d::core::Blob& index_data, int index_length, open3d::core::Tensor& nearest_neighbor_indices,
 		open3d::core::Tensor& nearest_neighbor_distances, const open3d::core::Tensor& query_points, int32_t k,
-		const open3d::core::Tensor& kd_tree_points);
+		const open3d::core::Tensor& reference_points);
+
 
 } // nnrt::core::kernel::kdtree

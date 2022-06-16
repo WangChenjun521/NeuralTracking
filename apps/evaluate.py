@@ -8,7 +8,7 @@ from alignment.loss import EPE_3D_eval
 from data import DeformDataset
 
 from settings import Parameters, process_arguments
-import io
+import data.io as io
 
 
 def main():
@@ -128,7 +128,7 @@ def main():
             node_translations_pred_file), f"{node_translations_pred_file} does not exist. Make sure you are not missing any prediction."
         assert os.path.isfile(scene_flow_pred_file), f"{scene_flow_pred_file} does not exist. Make sure you are not missing any prediction."
 
-        node_translations_pred = io.load_graph_node_deformations(
+        node_translations_pred = io.load_graph_nodes_or_deformations(
             node_translations_pred_file
         )
 

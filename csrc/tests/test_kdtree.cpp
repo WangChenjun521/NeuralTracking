@@ -19,6 +19,8 @@
 #include <core/LinearIndex.h>
 #include <open3d/core/Tensor.h>
 
+#include <Eigen/Dense>
+
 using namespace nnrt;
 namespace o3c = open3d::core;
 
@@ -237,7 +239,6 @@ void SortFinalKNNHelper_Indices(std::vector<int32_t>& nn_i_sorted, std::vector<f
 }
 
 
-
 template<typename TIndex = core::KdTree>
 void Test3DKnnSearch(const o3c::Device& device, bool use_priority_queue = true) {
 	std::vector<float> point_data{0., 9.8, 6.8, 5.7, 5., 0.8, 2.1, 1.8, 8.9, 8.3, 1.9,
@@ -446,4 +447,24 @@ void SortFinalKNNHelper_Points(std::vector<float>& nn_p_sorted, std::vector<floa
 			nn_d_sorted[offset + i_neighbor] = nn_d[offset + idx[i_neighbor]];
 		}
 	}
+}
+
+void GetDistanceStatistics(float& ratio_below_threshold, float& average_point_distance,
+						   Eigen::Map<Eigen::MatrixXf> points, float distance_threshold) {
+
+	float cumulative_distance = 0.0f;
+	int64_t count_below_threshold = 0;
+	int64_t distance_count = 0;
+	for (int i_point = 0; i_point < points.rows()-1; i_point++) {
+		for (int j_point = i_point+1; j_point < points.rows(); j_point++, distance_count++) {
+			float distance = (points.row(i_point) - points.row(j_point)).norm();
+			if(distance < distance_threshold){
+				count_below_threshold++;
+			}
+			cumulative_distance += distance;
+		}
+	}
+
+	ratio_below_threshold = static_cast<float>(count_below_threshold) / static_cast<float>(distance_count);
+	average_point_distance = cumulative_distance / static_cast<float>(distance_count);
 }

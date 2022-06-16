@@ -211,7 +211,29 @@ void ComputeAnchorsAndWeightsEuclidean(o3c::Tensor& anchors, o3c::Tensor& weight
 	if (anchor_count < 1) {
 		o3u::LogError("anchor_count needs to be greater than one. Got: {}.", anchor_count);
 	}
-	kernel::graph::ComputeAnchorsAndWeightsEuclidean(anchors, weights, points, nodes, anchor_count, minimum_valid_anchor_count, node_coverage);
+	auto points_shape = points.GetShape();
+	if (points_shape.size() < 2 || points_shape.size() > 3) {
+		o3u::LogError("`points` needs to have 2 or 3 dimensions. Got: {} dimensions.", points_shape.size());
+	}
+	o3c::Tensor points_array;
+	enum PointMode {
+		POINT_ARRAY, POINT_IMAGE
+	};
+	PointMode point_mode;
+	if (points_shape.size() == 2) {
+		o3c::AssertTensorShape(points, { o3u::nullopt, 3 });
+		points_array = points;
+		point_mode = POINT_ARRAY;
+	} else {
+		o3c::AssertTensorShape(points, { o3u::nullopt, o3u::nullopt, 3 });
+		points_array = points.Reshape({-1, 3});
+		point_mode = POINT_IMAGE;
+	}
+	kernel::graph::ComputeAnchorsAndWeightsEuclidean(anchors, weights, points_array, nodes, anchor_count, minimum_valid_anchor_count, node_coverage);
+	if(point_mode == POINT_IMAGE){
+		anchors = anchors.Reshape({points_shape[0], points_shape[1], anchor_count});
+		weights = weights.Reshape({points_shape[0], points_shape[1], anchor_count});
+	}
 }
 
 py::tuple ComputeAnchorsAndWeightsEuclidean(const o3c::Tensor& points, const o3c::Tensor& nodes, int anchor_count, int minimum_valid_anchor_count,
@@ -232,7 +254,29 @@ void ComputeAnchorsAndWeightsShortestPath(o3c::Tensor& anchors, o3c::Tensor& wei
 	if (anchor_count < 1) {
 		o3u::LogError("anchor_count needs to be greater than one. Got: {}.", anchor_count);
 	}
-	kernel::graph::ComputeAnchorsAndWeightsShortestPath(anchors, weights, points, nodes, edges, anchor_count, node_coverage);
+	auto points_shape = points.GetShape();
+	if (points_shape.size() < 2 || points_shape.size() > 3) {
+		o3u::LogError("`points` needs to have 2 or 3 dimensions. Got: {} dimensions.", points_shape.size());
+	}
+	o3c::Tensor points_array;
+	enum PointMode {
+		POINT_ARRAY, POINT_IMAGE
+	};
+	PointMode point_mode;
+	if (points_shape.size() == 2) {
+		o3c::AssertTensorShape(points, { o3u::nullopt, 3 });
+		points_array = points;
+		point_mode = POINT_ARRAY;
+	} else {
+		o3c::AssertTensorShape(points, { o3u::nullopt, o3u::nullopt, 3 });
+		points_array = points.Reshape({-1, 3});
+		point_mode = POINT_IMAGE;
+	}
+	kernel::graph::ComputeAnchorsAndWeightsShortestPath(anchors, weights, points_array, nodes, edges, anchor_count, node_coverage);
+	if(point_mode == POINT_IMAGE){
+		anchors = anchors.Reshape({points_shape[0], points_shape[1], anchor_count});
+		weights = weights.Reshape({points_shape[0], points_shape[1], anchor_count});
+	}
 }
 
 py::tuple ComputeAnchorsAndWeightsShortestPath(const o3c::Tensor& points, const o3c::Tensor& nodes, const o3c::Tensor& edges, int anchor_count,
@@ -246,10 +290,10 @@ GraphWarpField::GraphWarpField(o3c::Tensor nodes, o3c::Tensor edges, o3c::Tensor
                                o3c::Tensor clusters, float node_coverage, bool threshold_nodes_by_distance, int anchor_count,
                                int minimum_valid_anchor_count) :
 		nodes(std::move(nodes)), edges(std::move(edges)), edge_weights(std::move(edge_weights)), clusters(std::move(clusters)),
-		translations({this->nodes.GetLength(), 3}, o3c::Dtype::Float32, this->nodes.GetDevice()),
+		translations(o3c::Tensor::Zeros({this->nodes.GetLength(), 3}, o3c::Dtype::Float32, this->nodes.GetDevice())),
 		rotations({this->nodes.GetLength(), 3, 3}, o3c::Dtype::Float32, this->nodes.GetDevice()),
 		node_coverage(node_coverage), threshold_nodes_by_distance(threshold_nodes_by_distance), anchor_count(anchor_count),
-		minimum_valid_anchor_count(minimum_valid_anchor_count), index(this->nodes){
+		minimum_valid_anchor_count(minimum_valid_anchor_count), index(this->nodes) {
 	auto device = this->nodes.GetDevice();
 	o3c::AssertTensorDevice(this->edges, device);
 	o3c::AssertTensorDevice(this->edge_weights, device);
@@ -278,16 +322,33 @@ GraphWarpField::GraphWarpField(o3c::Tensor nodes, o3c::Tensor edges, o3c::Tensor
 	if (clusters_shape[0] != node_count) {
 		o3u::LogError("argument `clusters` needs to be a vector of the size {} (node count), got size {}.", node_count, clusters_shape[0]);
 	}
+	this->ResetRotations();
 }
+
+//TODO: optimize by making some kind of clone method in KdTree that simply shifts all the KD node pointers instead of reindexing
+GraphWarpField::GraphWarpField(const GraphWarpField& original) :
+	nodes(original.nodes.Clone()),
+	edges(original.edges.Clone()),
+	edge_weights(original.edge_weights.Clone()),
+	clusters(original.clusters.Clone()),
+	translations(original.translations.Clone()),
+	rotations(original.rotations.Clone()),
+	node_coverage(original.node_coverage),
+	anchor_count(original.anchor_count),
+	threshold_nodes_by_distance(original.threshold_nodes_by_distance),
+	minimum_valid_anchor_count(original.minimum_valid_anchor_count),
+	index(this->nodes)
+	{}
 
 o3c::Tensor GraphWarpField::GetWarpedNodes() const {
 	return nodes + this->translations;
 }
 
-o3c::TensorList GraphWarpField::GetNodeExtent() const {
-	auto max = nodes.Max({0});
-	auto min = nodes.Min({0});
-	return o3c::TensorList({min, max});
+o3c::Tensor GraphWarpField::GetNodeExtent() const {
+	o3c::Tensor minMax({2, 3}, nodes.GetDtype(), nodes.GetDevice());
+	minMax.Slice(0, 0, 1) = nodes.Min({0});
+	minMax.Slice(0, 1, 2) = nodes.Max({0});
+	return minMax;
 }
 
 open3d::t::geometry::TriangleMesh
@@ -305,6 +366,19 @@ GraphWarpField::WarpMesh(const open3d::t::geometry::TriangleMesh& input_mesh, bo
 const core::KdTree& GraphWarpField::GetIndex() const {
 	return this->index;
 }
+
+void GraphWarpField::ResetRotations() {
+	for (int i_node = 0; i_node < this->nodes.GetLength(); i_node++) {
+		rotations.Slice(0, i_node, i_node + 1) = o3c::Tensor::Eye(3, o3c::Dtype::Float32, this->nodes.GetDevice());
+	}
+}
+
+GraphWarpField GraphWarpField::ApplyTransformations() const {
+	return GraphWarpField(this->nodes + this->translations, this->edges, this->edge_weights, this->clusters, this->node_coverage,
+						  this->threshold_nodes_by_distance, this->anchor_count, this->minimum_valid_anchor_count);
+}
+
+
 
 
 } // namespace nnrt::geometry

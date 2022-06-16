@@ -1,20 +1,27 @@
-import os
-import re
-from enum import Enum
-
-import vtk
+# standard library
+from multiprocessing import Queue
+from pathlib import Path
+from typing import Union
 import sys
 
+# third-party
+import vtkmodules.all as vtk
+
+# local (visualizer app & apps.shared)
 from apps.shared.screen_management import set_up_render_window_bounds
+from apps.shared.app import App
 from apps.visualizer import utilities
 from apps.visualizer.mesh import Mesh, MeshColorMode
 from apps.visualizer.point_cloud import PointCloud, PointColorMode
+from apps.visualizer.correspondence_line_set import CorrespondenceColorMode, CorrespondenceLineSet
+from apps.visualizer.graph import Graph
 
 
-class VisualizerApp:
+class VisualizerApp(App):
 
-    def __init__(self, output_path, start_frame_ix=-1):
+    def __init__(self, output_path: Path, start_frame_ix: int = -1, outgoing_queue: Union[None, Queue] = None):
         self.__alt_pressed = False
+        self.outgoing_queue = outgoing_queue
 
         minimum_start_frame, self.frame_index_upper_bound = utilities.get_start_and_end_frame(output_path)
 
@@ -34,7 +41,7 @@ class VisualizerApp:
         # renderer & render window initialization
         self.renderer = vtk.vtkRenderer()
         self.render_window = vtk.vtkRenderWindow()
-        self.render_window.SetWindowName("Visualizer: " + output_path)
+        self.render_window.SetWindowName("Visualizer: " + str(output_path))
         set_up_render_window_bounds(self.render_window, None, 1)
         self.render_window.AddRenderer(self.renderer)
 
@@ -50,30 +57,51 @@ class VisualizerApp:
         self.shown_point_cloud_index = 0
 
         # point cloud setup
-        self.have_source_and_target_point_clouds = utilities.source_and_target_point_clouds_are_present(self.start_frame_ix, output_path)
+        self.have_source_and_target_point_clouds = utilities.source_and_target_point_clouds_are_present(
+            self.start_frame_ix, output_path)
         gn_iteration_count = utilities.get_gn_iteration_count(self.start_frame_ix, output_path)
         self.point_color_mode = PointColorMode.UNIFORM
         self.point_clouds = []
         self.point_cloud_names = []
+        # source
         if self.have_source_and_target_point_clouds:
             self.point_clouds.append(PointCloud(self.renderer, self.render_window, colors.GetColor3d("Blue")))
             self.point_cloud_names.append("source")
-
+        # GN iterations
         for i_point_cloud in range(0, gn_iteration_count):
             self.point_clouds.append(PointCloud(self.renderer, self.render_window, colors.GetColor3d("White")))
             self.point_cloud_names.append(f"GN iteration {i_point_cloud:03d}")
-
+        # target
         if self.have_source_and_target_point_clouds:
             self.point_clouds.append(PointCloud(self.renderer, self.render_window, colors.GetColor3d("Red")))
             self.point_cloud_names.append("target")
 
+        # correspondence line set setup
+        self.have_correspondence_info = utilities.correspondence_info_is_present(self.start_frame_ix, output_path)
+        self.correspondence_line_sets = []
+        self.correspondence_color_mode = CorrespondenceColorMode.PREDICTION_WEIGHTED
+        self.correspondence_set = None
+        if self.have_correspondence_info:
+            self.correspondence_set = CorrespondenceLineSet(self.renderer, self.render_window,
+                                                            colors.GetColor3d("Grey"))
+
+        # graph setup
+        self.have_graph_info = utilities.graph_info_is_present(self.start_frame_ix, output_path)
+        self.graph = None
+        if self.have_graph_info:
+            self.graph = Graph(self.renderer, self.render_window, colors.GetColor3d("Green"))
+
         # text setup
         self.text_mapper = vtk.vtkTextMapper()
+        shown_point_cloud = "none" if len(self.point_cloud_names) == 0 \
+            else self.point_cloud_names[self.shown_point_cloud_index]
         self.text_mapper.SetInput(f"Frame: {start_frame_ix:d}\n"
                                   f"Showing mesh: {self.mesh_names[self.shown_mesh_index]:s}\n"
                                   f"Mesh color mode: f{self.mesh_color_mode.name:s}\n"
-                                  f"Showing point cloud: {self.point_cloud_names[self.shown_point_cloud_index]:s}\n"
-                                  f"Point color mode: f{self.point_color_mode.name:s}")
+                                  f"Showing point cloud: {shown_point_cloud:s}\n"
+                                  f"Point color mode: f{self.point_color_mode.name:s}"
+                                  f"Visible correspondences: 0%\n"
+                                  f"Corresp. color mode: {self.correspondence_color_mode.name:s}\n")
 
         text_lines = self.text_mapper.GetInput().splitlines()
         self.number_of_text_lines = len(text_lines)
@@ -141,19 +169,24 @@ class VisualizerApp:
         self.show_mesh_at_index(self.shown_mesh_index)
         self.show_point_cloud_at_index(self.shown_point_cloud_index)  # hide all but one GN point cloud
 
-        # start with GN point cloud hidden
+        # start with point cloud hidden
         if len(self.point_clouds) > self.shown_point_cloud_index:
             self.point_clouds[self.shown_point_cloud_index].hide()
             self.update_text()
 
+        # start with correspondences hidden
+        if self.correspondence_set is not None:
+            self.correspondence_set.hide()
+
+        self.update_text()
         self.render_window.Render()
 
         self._pixel_labels_visible = False
 
     def load_frame_meshes(self, i_frame):
-        canonical_path = os.path.join(self.output_path, f"{i_frame:06d}_canonical_mesh.ply")
+        canonical_path = self.output_path / f"{i_frame:06d}_canonical_mesh.ply"
         self.canonical_mesh.update(canonical_path)
-        warped_live_path = os.path.join(self.output_path, f"{i_frame:06d}_warped_mesh.ply")
+        warped_live_path = self.output_path / f"{i_frame:06d}_warped_mesh.ply"
         self.warped_live_mesh.update(warped_live_path)
 
     def load_frame_point_clouds(self, i_frame):
@@ -161,13 +194,26 @@ class VisualizerApp:
         i_point_cloud_index = 0
         for point_cloud in self.point_clouds:
             if self.have_source_and_target_point_clouds and i_point_cloud_index == 0:
-                point_cloud.update(os.path.join(self.output_path, f"{i_frame:06d}_source_rgbxyz.npy"))
+                point_cloud.update(self.output_path / f"{i_frame:06d}_source_rgbxyz.npy")
             elif self.have_source_and_target_point_clouds and i_point_cloud_index == len(self.point_clouds) - 1:
-                point_cloud.update(os.path.join(self.output_path, f"{i_frame:06d}_target_rgbxyz.npy"))
+                point_cloud.update(self.output_path / f"{i_frame:06d}_target_rgbxyz.npy")
             else:
-                point_cloud.update(os.path.join(self.output_path, f"{i_frame:06d}_deformed_points_iter_{i_gn_iteration:03d}.npy"))
+                point_cloud.update(self.output_path / f"{i_frame:06d}_deformed_points_iter_{i_gn_iteration:03d}.npy")
                 i_gn_iteration += 1
             i_point_cloud_index += 1
+
+    def load_frame_correspondences(self, i_frame):
+        if self.correspondence_set is not None:
+            self.correspondence_set.update(self.output_path / f"{i_frame:06d}_source_rgbxyz.npy",
+                                           self.output_path / f"{i_frame:06d}_target_matches.npy",
+                                           self.output_path / f"{i_frame:06d}_valid_correspondence_mask.npy",
+                                           self.output_path / f"{i_frame:06d}_prediction_mask.npy")
+
+    def load_frame_graph(self, i_frame):
+        if self.graph is not None:
+            self.graph.update(self.output_path / f"{i_frame:06d}_nodes.npy",
+                              self.output_path / f"{i_frame:06d}_edges.npy",
+                              self.output_path / f"{i_frame:06d}_translations.npy")
 
     def launch(self):
         # Start the event loop.
@@ -212,11 +258,18 @@ class VisualizerApp:
             point_cloud.set_color_mode(self.point_color_mode)
         self.update_text()
 
+    def cycle_correspondence_color_mode(self):
+        self.correspondence_color_mode = self.correspondence_color_mode.next()
+        self.correspondence_set.set_color_mode(self.correspondence_color_mode)
+        self.update_text()
+
     def set_frame(self, i_frame):
         print("Frame:", i_frame)
 
         self.load_frame_meshes(i_frame)
         self.load_frame_point_clouds(i_frame)
+        self.load_frame_correspondences(i_frame)
+        self.load_frame_graph(i_frame)
         self.current_frame = i_frame
 
         self.update_text()
@@ -369,26 +422,62 @@ class VisualizerApp:
 
         self.render_window.Render()
 
+    KEYS_TO_SEND = {"q", "Escape", "bracketright", "bracketleft"}
+
     def keypress(self, obj, event):
         key = obj.GetKeySym()
+        # send key to linked process, if any
+        if key in VisualizerApp.KEYS_TO_SEND and self.outgoing_queue is not None:
+            self.outgoing_queue.put(key)
+        self.handle_key(key)
+
+    def handle_key(self, key):
         print("Key:", key)
+        # ==== window controls ===========
         if key == "q" or key == "Escape":
-            obj.InvokeEvent("DeleteAllObjects")
+            self.interactor.InvokeEvent("DeleteAllObjects")
             sys.exit()
+        # ==== frame controls ===========
         elif key == "bracketright":
             if self.current_frame < self.frame_index_upper_bound - 1:
                 self.set_frame(self.current_frame + 1)
         elif key == "bracketleft":
-            if self.current_frame > 0:
+            if self.current_frame > self.start_frame_ix:
                 self.set_frame(self.current_frame - 1)
+        # ==== mesh controls ===========
         elif key == "Right":
             self.advance_mesh()
         elif key == "Left":
             self.retreat_mesh()
-        elif key == "Up":
-            self.retreat_point_cloud()
-        elif key == "Down":
-            self.advance_point_cloud()
+        elif key == "m":
+            if self.__alt_pressed:
+                self.cycle_mesh_color_mode()
+                self.render_window.Render()
+            else:
+                self.meshes[self.shown_mesh_index].toggle_visibility()
+                self.update_text()
+                self.render_window.Render()
+        # ==== correspondence controls ===========
+        elif key == "c":
+            if self.correspondence_set is not None:
+                if self.__alt_pressed:
+                    self.cycle_correspondence_color_mode()
+                    self.render_window.Render()
+                else:
+                    self.correspondence_set.toggle_visibility()
+                    self.update_text()
+                    self.render_window.Render()
+        elif key == "period":
+            if self.correspondence_set is not None:
+                self.correspondence_set.increase_visible_match_ratio()
+                self.update_text()
+                self.render_window.Render()
+        elif key == "comma":
+            if self.correspondence_set is not None:
+                self.correspondence_set.decrease_visible_match_ratio()
+                self.update_text()
+                self.render_window.Render()
+        # ==== point cloud controls ===========
         elif key == "p":
             if self.__alt_pressed:
                 self.cycle_point_color_mode()
@@ -398,14 +487,16 @@ class VisualizerApp:
                     self.point_clouds[self.shown_point_cloud_index].toggle_visibility()
                     self.update_text()
                     self.render_window.Render()
-        elif key == "m":
-            if self.__alt_pressed:
-                self.cycle_mesh_color_mode()
+        elif key == "Up":
+            self.retreat_point_cloud()
+        elif key == "Down":
+            self.advance_point_cloud()
+        # ==== graph controls =================
+        elif key == "g":
+            if self.graph is not None:
+                self.graph.toggle_visibility()
                 self.render_window.Render()
-            else:
-                self.meshes[self.shown_mesh_index].toggle_visibility()
-                self.update_text()
-                self.render_window.Render()
+        # ==== modifier keys ==================
         elif key == "Alt_L" or key == "Alt_R":
             self.__alt_pressed = True
 
@@ -417,7 +508,8 @@ class VisualizerApp:
     def update_window(self, obj, event):
         (window_width, window_height) = self.render_window.GetSize()
         if window_width != self.last_window_width or window_height != self.last_window_height:
-            self.text_actor.SetDisplayPosition(window_width - 400, window_height - (self.number_of_text_lines + 2) * self.font_size)
+            self.text_actor.SetDisplayPosition(window_width - 500,
+                                               window_height - (self.number_of_text_lines + 2) * self.font_size)
             self.last_window_width = window_width
             self.last_window_height = window_height
 
@@ -429,12 +521,19 @@ class VisualizerApp:
         else:
             mesh_mode = "none"
 
-        if self.point_clouds[self.shown_point_cloud_index].is_visible():
+        if len(self.point_clouds) > 0 and self.point_clouds[self.shown_point_cloud_index].is_visible():
             point_cloud_iteration_text = self.point_cloud_names[self.shown_point_cloud_index]
         else:
             point_cloud_iteration_text = "none"
+        showing_correspondences = self.correspondence_set is not None and self.correspondence_set.is_visible()
+        visible_correspondence_percentage = 0 if not showing_correspondences else \
+            self.correspondence_set.visible_match_percentage
         self.text_mapper.SetInput(f"Frame: {self.current_frame:d}\n"
                                   f"Showing mesh: {mesh_mode:s}\n"
                                   f"Mesh color mode: {self.mesh_color_mode.name:s}\n"
                                   f"Showing point cloud: {point_cloud_iteration_text:s}\n"
-                                  f"Point color mode: {self.point_color_mode.name:s}\n")
+                                  f"Point color mode: {self.point_color_mode.name:s}\n"
+                                  f"Visible correspondences: {visible_correspondence_percentage}%\n"
+                                  f"Corresp. color mode: {self.correspondence_color_mode.name:s}\n")
+
+

@@ -28,4 +28,18 @@ class FrameviewerParameters(ParameterEnum):
         Parameter(default="output/train/seq070", arg_type=str,
                   arg_help="Path to folder with output generated from the sequence (optional).")
 
+    start_frame_index = \
+        Parameter(default=0, arg_type=int,
+                  arg_help="The frame of the sequence to start viewing from.")
+
+    masking_threshold = \
+        Parameter(default=254, arg_type=int,
+                  arg_help="Threshold to use for masking. Masks are typically greyscale 8-bit images (with values "
+                           "between 0 and 255. A threshold of 0 would show everything, a threshold of 255 would "
+                           "obscure everything.")
+
+    frame_count = \
+        Parameter(default=0, arg_type=int,
+                  arg_help="The total number of frames to view.")
+
     tsdf: Type[TsdfParameters] = TsdfParameters

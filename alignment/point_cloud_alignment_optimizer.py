@@ -13,20 +13,25 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #  ================================================================
-from typing import Tuple, Union
+import gc
+from typing import Tuple, Union, List
 from timeit import default_timer as timer
 import math
 import numpy as np
 import torch
+
 import kornia
+
+if kornia.__version__ >= '0.5.0':
+    import kornia.geometry.conversions as kornia
 
 from alignment.common.linear_solver_lu import LinearSolverLU
 from settings import DeformNetParameters
 
 
 class PointCloudAlignmentOptimizer:
-    def __init__(self, telemetry_generator=None):
-        self.telemetry_generator = telemetry_generator
+    def __init__(self, output_gn_point_clouds=False):
+        self.output_gn_point_clouds = output_gn_point_clouds
 
         self.gn_debug = DeformNetParameters.gn_debug.value
 
@@ -70,7 +75,9 @@ class PointCloudAlignmentOptimizer:
                        graph_edge_pairs_filtered: torch.Tensor, graph_edge_weights_pairs: torch.Tensor,
                        num_neighbors: int,
                        fx: torch.Tensor, fy: torch.Tensor, cx: torch.Tensor, cy: torch.Tensor,
-                       batch_convergence_info) -> Tuple[bool, torch.Tensor, torch.Tensor, torch.Tensor]:
+                       batch_convergence_info) -> Tuple[
+        bool, torch.Tensor, torch.Tensor, torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]
+    ]:
 
         self.vec_to_skew_mat.to(source_anchors.device)
 
@@ -82,43 +89,58 @@ class PointCloudAlignmentOptimizer:
         # translation for every node. All node rotation parameters are listed first, and
         # then all node translation parameters are listed.
         #                        transform_delta = [rotations_current, translations_current]
-        rotations_current = torch.eye(3, dtype=float_dtype, device=device).view(1, 3, 3).repeat(optimized_node_count, 1, 1)
+        rotations_current = torch.eye(3, dtype=float_dtype, device=device).view(1, 3, 3).repeat(optimized_node_count, 1,
+                                                                                                1)
         translations_current = torch.zeros((optimized_node_count, 3, 1), dtype=float_dtype, device=device)
 
         if self.gn_debug:
-            print(f"\tMatch count: {match_count} || Node count: {optimized_node_count} || Edges count: {batch_edge_count}")
+            print(
+                f"\tMatch count: {match_count} || Node count: {optimized_node_count} || Edges count: {batch_edge_count}")
 
         # Initialize helper structures.
-        data_increment_vec_0_3 = torch.arange(0, match_count * 3, 3, out=torch.cuda.LongTensor(), device=device)  # (match_count)
-        data_increment_vec_1_3 = torch.arange(1, match_count * 3, 3, out=torch.cuda.LongTensor(), device=device)  # (match_count)
-        data_increment_vec_2_3 = torch.arange(2, match_count * 3, 3, out=torch.cuda.LongTensor(), device=device)  # (match_count)
+        data_increment_vec_0_3 = torch.arange(0, match_count * 3, 3, out=torch.cuda.LongTensor(),
+                                              device=device)  # (match_count)
+        data_increment_vec_1_3 = torch.arange(1, match_count * 3, 3, out=torch.cuda.LongTensor(),
+                                              device=device)  # (match_count)
+        data_increment_vec_2_3 = torch.arange(2, match_count * 3, 3, out=torch.cuda.LongTensor(),
+                                              device=device)  # (match_count)
 
         arap_increment_vec_0_3 = None
         arap_increment_vec_1_3 = None
         arap_increment_vec_2_3 = None
         arap_one_vec = None
         if batch_edge_count > 0:
-            arap_increment_vec_0_3 = torch.arange(0, batch_edge_count * 3, 3, out=torch.cuda.LongTensor(), device=device)  # (batch_edge_count)
-            arap_increment_vec_1_3 = torch.arange(1, batch_edge_count * 3, 3, out=torch.cuda.LongTensor(), device=device)  # (batch_edge_count)
-            arap_increment_vec_2_3 = torch.arange(2, batch_edge_count * 3, 3, out=torch.cuda.LongTensor(), device=device)  # (batch_edge_count)
+            arap_increment_vec_0_3 = torch.arange(0, batch_edge_count * 3, 3, out=torch.cuda.LongTensor(),
+                                                  device=device)  # (batch_edge_count)
+            arap_increment_vec_1_3 = torch.arange(1, batch_edge_count * 3, 3, out=torch.cuda.LongTensor(),
+                                                  device=device)  # (batch_edge_count)
+            arap_increment_vec_2_3 = torch.arange(2, batch_edge_count * 3, 3, out=torch.cuda.LongTensor(),
+                                                  device=device)  # (batch_edge_count)
             arap_one_vec = torch.ones(batch_edge_count, dtype=float_dtype, device=device)
 
         ill_posed_system = False
         residuals = None
 
+        gn_point_clouds = []
         for i_iteration in range(gauss_newton_iteration_count):
             residual_data, jacobian_data = \
-                self.compute_data_residual_and_jacobian(data_increment_vec_0_3, data_increment_vec_1_3, data_increment_vec_2_3,
+                self.compute_data_residual_and_jacobian(data_increment_vec_0_3, data_increment_vec_1_3,
+                                                        data_increment_vec_2_3,
                                                         match_count, optimized_node_count, graph_nodes_i,
-                                                        source_anchors, source_weights, source_points_filtered, source_colors_filtered,
-                                                        correspondence_weights_filtered, xy_pixels_warped_filtered, target_matches_filtered,
-                                                        i_iteration, fx, fy, cx, cy, rotations_current, translations_current)
+                                                        source_anchors, source_weights, source_points_filtered,
+                                                        source_colors_filtered,
+                                                        correspondence_weights_filtered, xy_pixels_warped_filtered,
+                                                        target_matches_filtered,
+                                                        i_iteration, fx, fy, cx, cy, rotations_current,
+                                                        translations_current, gn_point_clouds)
             loss_arap = None
             if batch_edge_count > 0:
                 residual_arap, jacobian_arap = \
-                    self.compute_arap_residual_and_jacobian(arap_increment_vec_0_3, arap_increment_vec_1_3, arap_increment_vec_2_3, arap_one_vec,
+                    self.compute_arap_residual_and_jacobian(arap_increment_vec_0_3, arap_increment_vec_1_3,
+                                                            arap_increment_vec_2_3, arap_one_vec,
                                                             graph_edge_pairs_filtered, graph_edge_weights_pairs,
-                                                            graph_nodes_i, batch_edge_count, optimized_node_count, num_neighbors,
+                                                            graph_nodes_i, batch_edge_count, optimized_node_count,
+                                                            num_neighbors,
                                                             rotations_current, translations_current)
                 loss_arap = torch.norm(residual_arap).item()
                 residuals = torch.cat((residual_data, residual_arap), 0)
@@ -133,7 +155,8 @@ class PointCloudAlignmentOptimizer:
                 break
 
             # Increment the current rotation and translation.
-            rotation_increments = kornia.angle_axis_to_rotation_matrix(transform_delta[:optimized_node_count * 3].view(optimized_node_count, 3))
+            rotation_increments = kornia.angle_axis_to_rotation_matrix(
+                transform_delta[:optimized_node_count * 3].view(optimized_node_count, 3))
             translation_increments = transform_delta[optimized_node_count * 3:].view(optimized_node_count, 3, 1)
 
             rotations_current = torch.matmul(rotation_increments, rotations_current)
@@ -153,8 +176,9 @@ class PointCloudAlignmentOptimizer:
                     print(f"\t\t-->Iteration: {i_iteration}. "
                           f"Loss: \tdata = {loss_data:.3f}, \tarap = {loss_arap:.3f}, \ttotal = {loss_total:.3f}")
                 else:
-                    print(f"\t\t-->Iteration: {i_iteration}. Loss: \tdata = {loss_data:.3f}, \ttotal = {loss_total:.3f}")
-        return ill_posed_system, residuals, rotations_current, translations_current
+                    print(
+                        f"\t\t-->Iteration: {i_iteration}. Loss: \tdata = {loss_data:.3f}, \ttotal = {loss_total:.3f}")
+        return ill_posed_system, residuals, rotations_current, translations_current, gn_point_clouds
 
     def solve_linear_system(self,
                             residual, jacobian,
@@ -163,7 +187,7 @@ class PointCloudAlignmentOptimizer:
 
         timer_system_start = timer()
 
-        # Compute A = J^TJ and b = -J^Tr.
+        # Compute A = (J^T)J and b = -(J^T)r.
         jacobian_transpose = torch.transpose(jacobian, 0, 1)
         A = torch.matmul(jacobian_transpose, jacobian)
         b = torch.matmul(-jacobian_transpose, residual)
@@ -193,16 +217,19 @@ class PointCloudAlignmentOptimizer:
 
                 if self.gn_break_on_condition_num and (
                         not math.isfinite(condition_number) or condition_number > self.gn_max_condition_num):
-                    print("\t\tToo high condition number: {0:e} (max: {1:.3f}, min: {2:.3f}). Discarding sample".format(condition_number,
-                                                                                                                        max_eig_value.item(),
-                                                                                                                        min_eig_value.item()))
+                    print("\t\tToo high condition number: {0:e} (max: {1:.3f}, min: {2:.3f}). Discarding sample".format(
+                        condition_number,
+                        max_eig_value.item(),
+                        min_eig_value.item()))
                     batch_convergence_info["errors"].append(
-                        "Too high condition number: {0:e} (max: {1:.3f}, min: {2:.3f}). Discarding sample".format(condition_number,
-                                                                                                                  max_eig_value.item(),
-                                                                                                                  min_eig_value.item()))
+                        "Too high condition number: {0:e} (max: {1:.3f}, min: {2:.3f}). Discarding sample".format(
+                            condition_number,
+                            max_eig_value.item(),
+                            min_eig_value.item()))
                     return False, None
                 elif self.gn_debug:
-                    print("\t\tCondition number: {0:e} (max: {1:.3f}, min: {2:.3f})".format(condition_number, max_eig_value.item(),
+                    print("\t\tCondition number: {0:e} (max: {1:.3f}, min: {2:.3f})".format(condition_number,
+                                                                                            max_eig_value.item(),
                                                                                             min_eig_value.item()))
 
         if self.gn_print_timings:
@@ -245,13 +272,16 @@ class PointCloudAlignmentOptimizer:
                                            i_iteration: int,
                                            # camera projection parameters
                                            fx: torch.Tensor, fy: torch.Tensor, cx: torch.Tensor, cy: torch.Tensor,
-                                           rotations_current: torch.Tensor, translations_current: torch.Tensor
+                                           rotations_current: torch.Tensor,
+                                           translations_current: torch.Tensor,
+                                           gn_point_clouds: List[Tuple[torch.Tensor, torch.Tensor]]
                                            ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         timer_data_start = timer()
         jacobian_data = torch.zeros((match_count * 3, opt_num_nodes_i * 6), dtype=rotations_current.dtype,
                                     device=rotations_current.device)  # (num_matches*3, opt_num_nodes_i*6)
-        deformed_points = torch.zeros((match_count, 3, 1), dtype=rotations_current.dtype, device=rotations_current.device)
+        deformed_points = torch.zeros((match_count, 3, 1), dtype=rotations_current.dtype,
+                                      device=rotations_current.device)
 
         for k in range(4):  # Our data uses 4 anchors for every point
             node_idxs_k = source_anchors[:, k]  # (num_matches)
@@ -266,8 +296,8 @@ class PointCloudAlignmentOptimizer:
                 source_weights[:, k].view(match_count, 1, 1).repeat(1, 3, 1) * \
                 deformed_points_k  # (num_matches, 3, 1)
 
-        if self.telemetry_generator is not None:
-            self.telemetry_generator.process_gn_point_cloud(deformed_points, source_colors_filtered, i_iteration)
+        if self.output_gn_point_clouds:
+            gn_point_clouds.append((deformed_points, source_colors_filtered))
 
         # Get necessary components of deformed points.
         eps = 1e-7  # Just as good practice, although matches should all have valid depth at this stage
@@ -291,12 +321,13 @@ class PointCloudAlignmentOptimizer:
             node_idxs_k = source_anchors[:, k]  # (num_matches)
             nodes_k = graph_nodes_i[node_idxs_k].view(match_count, 3, 1)  # (num_matches, 3, 1)
 
-            weights_k = source_weights[:, k] * correspondence_weights_filtered  # (num_matches) #TODO: check arm pixel correspondence_weights
+            weights_k = source_weights[:, k] * correspondence_weights_filtered  # (num_matches)
 
             # Compute skew-symmetric part.
             rotated_points_k = torch.matmul(rotations_current[node_idxs_k],
                                             source_points_filtered - nodes_k)  # (num_matches, 3, 1) = (num_matches, 3, 3) * (num_matches, 3, 1)
-            weighted_rotated_points_k = weights_k.view(match_count, 1, 1).repeat(1, 3, 1) * rotated_points_k  # (num_matches, 3, 1)
+            weighted_rotated_points_k = weights_k.view(match_count, 1, 1).repeat(1, 3,
+                                                                                 1) * rotated_points_k  # (num_matches, 3, 1)
             skew_symetric_mat_data = -torch.matmul(self.vec_to_skew_mat, weighted_rotated_points_k).view(match_count, 3,
                                                                                                          3)  # (num_matches, 3, 3)
 
@@ -342,26 +373,33 @@ class PointCloudAlignmentOptimizer:
                 minus_fy_mul_y_div_z_2 * skew_symetric_mat_data[:, 2, 2]
 
             # DEPTH PART
-            jacobian_data[data_increment_vec_2_3, 3 * node_idxs_k + 0] += lambda_data_depth * skew_symetric_mat_data[:, 2, 0]
-            jacobian_data[data_increment_vec_2_3, 3 * node_idxs_k + 1] += lambda_data_depth * skew_symetric_mat_data[:, 2, 1]
-            jacobian_data[data_increment_vec_2_3, 3 * node_idxs_k + 2] += lambda_data_depth * skew_symetric_mat_data[:, 2, 2]
+            jacobian_data[data_increment_vec_2_3, 3 * node_idxs_k + 0] += \
+                lambda_data_depth * skew_symetric_mat_data[:, 2, 0]
+            jacobian_data[data_increment_vec_2_3, 3 * node_idxs_k + 1] += \
+                lambda_data_depth * skew_symetric_mat_data[:, 2, 1]
+            jacobian_data[data_increment_vec_2_3, 3 * node_idxs_k + 2] += \
+                lambda_data_depth * skew_symetric_mat_data[:, 2, 2]
 
             assert torch.isfinite(jacobian_data).all(), jacobian_data
 
-        residuals_data = torch.zeros((match_count * 3, 1), dtype=rotations_current.dtype, device=rotations_current.device)
+        residuals_data = torch.zeros((match_count * 3, 1), dtype=rotations_current.dtype,
+                                     device=rotations_current.device)
 
         # FLOW PART
         # [projected deformed point u-coordinate] - [flow-warped source u-coordinate (u + Δu)]
         residuals_data[data_increment_vec_0_3, 0] = \
-            lambda_data_flow * correspondence_weights_filtered * (fx_mul_x_div_z + cx - xy_pixels_warped_filtered[:, 0, :].view(match_count))
+            lambda_data_flow * correspondence_weights_filtered * (
+                    fx_mul_x_div_z + cx - xy_pixels_warped_filtered[:, 0, :].view(match_count))
         # [projected deformed point v-coordinate] - [flow-warped source v-coordinate (v + Δv)]
         residuals_data[data_increment_vec_1_3, 0] = \
-            lambda_data_flow * correspondence_weights_filtered * (fy_mul_y_div_z + cy - xy_pixels_warped_filtered[:, 1, :].view(match_count))
+            lambda_data_flow * correspondence_weights_filtered * (
+                    fy_mul_y_div_z + cy - xy_pixels_warped_filtered[:, 1, :].view(match_count))
 
         # DEPTH PART
         # [projected deformed point u-coordinate] - [target matched point z-coordinate]
         residuals_data[data_increment_vec_2_3, 0] = \
-            lambda_data_depth * correspondence_weights_filtered * (deformed_points[:, 2, :] - target_matches_filtered[:, 2, :]).view(match_count)
+            lambda_data_depth * correspondence_weights_filtered * (
+                    deformed_points[:, 2, :] - target_matches_filtered[:, 2, :]).view(match_count)
         if self.gn_print_timings:
             print("\t\tData term: {:.3f} s".format(timer() - timer_data_start))
         return residuals_data, jacobian_data
@@ -381,6 +419,7 @@ class PointCloudAlignmentOptimizer:
                                            translations_current: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         timer_arap_start = timer()
 
+        # TODO: initialize somewhere else and zero out here instead to avoid extra memory allocations + deallocations
         jacobian_arap = torch.zeros((batch_edge_count * 3, opt_num_nodes_i * 6), dtype=arap_one_vec.dtype,
                                     device=arap_one_vec.device)  # (batch_edge_count*3, opt_num_nodes_i*6)
 
@@ -403,40 +442,47 @@ class PointCloudAlignmentOptimizer:
         lambda_arap = self.lambda_arap
 
         # Compute residual.
+        # Rotated edges (between nodes)
         rotated_node_delta = torch.matmul(rotations_current[node_idxs_0], nodes_1 - nodes_0)  # (batch_edge_count, 3)
+        # node 0 + node 0 translation + rotated edge to node 1 = node 0 current position + rotated edge to node 1
+        #                        vs.
+        # node 1 + node 1 translation = node 1 current position
         residuals_arap = lambda_arap * w_repeat * (rotated_node_delta + nodes_0 + translations_current[node_idxs_0]
                                                    - (nodes_1 + translations_current[node_idxs_1]))
         residuals_arap = residuals_arap.view(batch_edge_count * 3, 1)
 
         # Compute jacobian wrt. translations.
-        jacobian_arap[
-            arap_increment_vec_0_3, 3 * opt_num_nodes_i + 3 * node_idxs_0 + 0] += lambda_arap * w * arap_one_vec  # (batch_edge_count)
-        jacobian_arap[
-            arap_increment_vec_1_3, 3 * opt_num_nodes_i + 3 * node_idxs_0 + 1] += lambda_arap * w * arap_one_vec  # (batch_edge_count)
-        jacobian_arap[
-            arap_increment_vec_2_3, 3 * opt_num_nodes_i + 3 * node_idxs_0 + 2] += lambda_arap * w * arap_one_vec  # (batch_edge_count)
+        jacobian_arap[arap_increment_vec_0_3, 3 * opt_num_nodes_i + 3 * node_idxs_0 + 0] += \
+            lambda_arap * w * arap_one_vec  # (batch_edge_count)
+        jacobian_arap[arap_increment_vec_1_3, 3 * opt_num_nodes_i + 3 * node_idxs_0 + 1] += \
+            lambda_arap * w * arap_one_vec  # (batch_edge_count)
+        jacobian_arap[arap_increment_vec_2_3, 3 * opt_num_nodes_i + 3 * node_idxs_0 + 2] += \
+            lambda_arap * w * arap_one_vec  # (batch_edge_count)
 
-        jacobian_arap[
-            arap_increment_vec_0_3, 3 * opt_num_nodes_i + 3 * node_idxs_1 + 0] += -lambda_arap * w * arap_one_vec  # (batch_edge_count)
-        jacobian_arap[
-            arap_increment_vec_1_3, 3 * opt_num_nodes_i + 3 * node_idxs_1 + 1] += -lambda_arap * w * arap_one_vec  # (batch_edge_count)
-        jacobian_arap[
-            arap_increment_vec_2_3, 3 * opt_num_nodes_i + 3 * node_idxs_1 + 2] += -lambda_arap * w * arap_one_vec  # (batch_edge_count)
+        jacobian_arap[arap_increment_vec_0_3, 3 * opt_num_nodes_i + 3 * node_idxs_1 + 0] += \
+            -lambda_arap * w * arap_one_vec  # (batch_edge_count)
+        jacobian_arap[arap_increment_vec_1_3, 3 * opt_num_nodes_i + 3 * node_idxs_1 + 1] += \
+            -lambda_arap * w * arap_one_vec  # (batch_edge_count)
+        jacobian_arap[arap_increment_vec_2_3, 3 * opt_num_nodes_i + 3 * node_idxs_1 + 2] += \
+            -lambda_arap * w * arap_one_vec  # (batch_edge_count)
 
-        # Compute jacobian wrt. rotations.
+        # Compute Jacobian wrt. rotations.
         # Derivative wrt. R_1 is equal to 0.
-        skew_symetric_mat_arap = -lambda_arap * w_repeat_repeat * \
-                                 torch.matmul(self.vec_to_skew_mat, rotated_node_delta).view(batch_edge_count, 3, 3)  # (batch_edge_count, 3, 3)
+        skew_symmetric_mat_arap = \
+            -lambda_arap * w_repeat_repeat * \
+            torch.matmul(self.vec_to_skew_mat, rotated_node_delta).view(
+                batch_edge_count, 3, 3
+            )  # (batch_edge_count, 3, 3)
 
-        jacobian_arap[arap_increment_vec_0_3, 3 * node_idxs_0 + 0] += skew_symetric_mat_arap[:, 0, 0]
-        jacobian_arap[arap_increment_vec_0_3, 3 * node_idxs_0 + 1] += skew_symetric_mat_arap[:, 0, 1]
-        jacobian_arap[arap_increment_vec_0_3, 3 * node_idxs_0 + 2] += skew_symetric_mat_arap[:, 0, 2]
-        jacobian_arap[arap_increment_vec_1_3, 3 * node_idxs_0 + 0] += skew_symetric_mat_arap[:, 1, 0]
-        jacobian_arap[arap_increment_vec_1_3, 3 * node_idxs_0 + 1] += skew_symetric_mat_arap[:, 1, 1]
-        jacobian_arap[arap_increment_vec_1_3, 3 * node_idxs_0 + 2] += skew_symetric_mat_arap[:, 1, 2]
-        jacobian_arap[arap_increment_vec_2_3, 3 * node_idxs_0 + 0] += skew_symetric_mat_arap[:, 2, 0]
-        jacobian_arap[arap_increment_vec_2_3, 3 * node_idxs_0 + 1] += skew_symetric_mat_arap[:, 2, 1]
-        jacobian_arap[arap_increment_vec_2_3, 3 * node_idxs_0 + 2] += skew_symetric_mat_arap[:, 2, 2]
+        jacobian_arap[arap_increment_vec_0_3, 3 * node_idxs_0 + 0] += skew_symmetric_mat_arap[:, 0, 0]
+        jacobian_arap[arap_increment_vec_0_3, 3 * node_idxs_0 + 1] += skew_symmetric_mat_arap[:, 0, 1]
+        jacobian_arap[arap_increment_vec_0_3, 3 * node_idxs_0 + 2] += skew_symmetric_mat_arap[:, 0, 2]
+        jacobian_arap[arap_increment_vec_1_3, 3 * node_idxs_0 + 0] += skew_symmetric_mat_arap[:, 1, 0]
+        jacobian_arap[arap_increment_vec_1_3, 3 * node_idxs_0 + 1] += skew_symmetric_mat_arap[:, 1, 1]
+        jacobian_arap[arap_increment_vec_1_3, 3 * node_idxs_0 + 2] += skew_symmetric_mat_arap[:, 1, 2]
+        jacobian_arap[arap_increment_vec_2_3, 3 * node_idxs_0 + 0] += skew_symmetric_mat_arap[:, 2, 0]
+        jacobian_arap[arap_increment_vec_2_3, 3 * node_idxs_0 + 1] += skew_symmetric_mat_arap[:, 2, 1]
+        jacobian_arap[arap_increment_vec_2_3, 3 * node_idxs_0 + 2] += skew_symmetric_mat_arap[:, 2, 2]
 
         assert torch.isfinite(jacobian_arap).all(), jacobian_arap
 

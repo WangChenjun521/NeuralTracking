@@ -1,3 +1,4 @@
+import gc
 import os
 import argparse
 from datetime import datetime
@@ -7,7 +8,7 @@ import numpy as np
 from timeit import default_timer as timer
 import math
 
-from alignment import evaluate, nn_utilities
+from alignment import evaluate, nn_utilities, DeformNet
 
 import torch
 import open3d.core as o3c
@@ -84,7 +85,10 @@ if __name__ == "__main__":
 
     iteration_number = 0
 
-    model = load_default_nnrt_network(o3c.Device.CUDA)
+    if Parameters.training.use_pretrained_model.value:
+        model = load_default_nnrt_network(o3c.Device.CUDA)
+    else:
+        model = DeformNet(False).cuda()
 
     # Criterion.
     criterion = DeformLoss(Parameters.training.loss.lambda_flow.value, Parameters.training.loss.lambda_graph.value,
@@ -93,15 +97,18 @@ if __name__ == "__main__":
 
     # Count parameters.
     n_all_model_params = int(sum([np.prod(p.size()) for p in model.parameters()]))
-    n_trainable_model_params = int(sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.parameters())]))
+    n_trainable_model_params = \
+        int(sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.parameters())]))
     print("Number of parameters: {0} / {1}".format(n_trainable_model_params, n_all_model_params))
 
     n_all_flownet_params = int(sum([np.prod(p.size()) for p in model.flow_net.parameters()]))
-    n_trainable_flownet_params = int(sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.flow_net.parameters())]))
+    n_trainable_flownet_params = \
+        int(sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.flow_net.parameters())]))
     print("-> Flow network: {0} / {1}".format(n_trainable_flownet_params, n_all_flownet_params))
 
     n_all_masknet_params = int(sum([np.prod(p.size()) for p in model.mask_net.parameters()]))
-    n_trainable_masknet_params = int(sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.mask_net.parameters())]))
+    n_trainable_masknet_params =\
+        int(sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.mask_net.parameters())]))
     print("-> Mask network: {0} / {1}".format(n_trainable_masknet_params, n_all_masknet_params))
     print()
 
@@ -447,6 +454,9 @@ if __name__ == "__main__":
                     snapshot_manager.save_model(model, iteration_number)
 
                 iteration_number = iteration_number + 1
+
+            gc.collect()
+            torch.cuda.empty_cache()
 
             print()
             print("Epoch {} complete".format(epoch))

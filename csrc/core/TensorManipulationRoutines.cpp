@@ -14,6 +14,7 @@
 //  limitations under the License.
 //  ================================================================
 #include "core/TensorManipulationRoutines.h"
+#include "core/linalg/Matmul3D.h"
 
 namespace o3u = open3d::utility;
 namespace o3c = open3d::core;
@@ -44,5 +45,13 @@ namespace nnrt::core{
 		concatenated_tensor.SetItem(o3c::TensorKey::Slice(0, tensor1_length, 1), tensor1);
 		concatenated_tensor.SetItem(o3c::TensorKey::Slice(tensor1_length, combined_length, 1), tensor2);
 		return concatenated_tensor;
+	}
+
+	open3d::core::Tensor Matmul3D(const open3d::core::Tensor& tensor1, const open3d::core::Tensor& tensor2){
+
+		o3c::Tensor output;
+		core::linalg::Matmul3D(output, tensor1, tensor2);
+		return output;
+
 	}
 }
